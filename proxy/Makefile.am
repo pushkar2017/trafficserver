@@ -19,7 +19,7 @@
 include $(top_srcdir)/build/tidy.mk
 
 # Note that hdrs is targeted from ../Makefile.am
-SUBDIRS = http http2 logging config
+SUBDIRS = http http2 logging config tunnel
 noinst_LIBRARIES =
 bin_PROGRAMS = \
 	traffic_server
