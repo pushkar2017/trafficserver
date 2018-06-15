@@ -23,27 +23,27 @@
 
 /****************************************************************************
 
-   HttpServerSession.cc
+   TunnelServerSession.cc
 
    Description:
 
  ****************************************************************************/
 #include "ts/ink_config.h"
 #include "ts/Allocator.h"
-#include "HttpServerSession.h"
+#include "TunnelServerSession.h"
 #include "HttpSessionManager.h"
 #include "HttpSM.h"
 
 static int64_t next_ss_id = (int64_t)0;
-ClassAllocator<HttpServerSession> httpServerSessionAllocator("httpServerSessionAllocator");
+ClassAllocator<TunnelServerSession> tunnelServerSessionAllocator("tunnelServerSessionAllocator");
 
 void
-HttpServerSession::destroy()
+TunnelServerSession::destroy()
 {
   ink_release_assert(server_vc == nullptr);
   ink_assert(read_buffer);
   ink_assert(server_trans_stat == 0);
-  magic = HTTP_SS_MAGIC_DEAD;
+  magic = TUNNEL_SS_MAGIC__DEAD;
   if (read_buffer) {
     free_MIOBuffer(read_buffer);
     read_buffer = nullptr;
@@ -58,7 +58,7 @@ HttpServerSession::destroy()
 }
 
 void
-HttpServerSession::new_connection(NetVConnection *new_vc)
+TunnelServerSession::new_connection(NetVConnection *new_vc)
 {
   ink_assert(new_vc != nullptr);
   server_vc = new_vc;
@@ -69,7 +69,7 @@ HttpServerSession::new_connection(NetVConnection *new_vc)
   // Unique client session identifier.
   con_id = ink_atomic_increment((int64_t *)(&next_ss_id), 1);
 
-  magic = HTTP_SS_MAGIC_ALIVE;
+  magic = TUNNEL_SS_MAGIC__ALIVE;
   HTTP_SUM_GLOBAL_DYN_STAT(http_current_server_connections_stat, 1); // Update the true global stat
   HTTP_INCREMENT_DYN_STAT(http_total_server_connections_stat);
   // Check to see if we are limiting the number of connections
@@ -97,25 +97,25 @@ HttpServerSession::new_connection(NetVConnection *new_vc)
 }
 
 VIO *
-HttpServerSession::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
+TunnelServerSession::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
 {
   return server_vc->do_io_read(c, nbytes, buf);
 }
 
 VIO *
-HttpServerSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
+TunnelServerSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
 {
   return server_vc->do_io_write(c, nbytes, buf, owner);
 }
 
 void
-HttpServerSession::do_io_shutdown(ShutdownHowTo_t howto)
+TunnelServerSession::do_io_shutdown(ShutdownHowTo_t howto)
 {
   server_vc->do_io_shutdown(howto);
 }
 
 void
-HttpServerSession::do_io_close(int alerrno)
+TunnelServerSession::do_io_close(int alerrno)
 {
   if (state == HSS_ACTIVE) {
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
@@ -154,17 +154,17 @@ HttpServerSession::do_io_close(int alerrno)
 }
 
 void
-HttpServerSession::reenable(VIO *vio)
+TunnelServerSession::reenable(VIO *vio)
 {
   server_vc->reenable(vio);
 }
 
-// void HttpServerSession::release()
+// void TunnelServerSession::release()
 //
 //   Releases the session for K-A reuse
 //
 void
-HttpServerSession::release()
+TunnelServerSession::release()
 {
   Debug("http_ss", "Releasing session, private_session=%d, sharing_match=%d", private_session, sharing_match);
   // Set our state to KA for stat issues
@@ -182,6 +182,9 @@ HttpServerSession::release()
   server_vc->do_io_read(nullptr, 0, nullptr);
   server_vc->do_io_write(nullptr, 0, nullptr);
 
+  // We are not reusing sessions like HTTP so just close
+  this->do_io_close();
+#if 0
   HSMresult_t r = httpSessionManager.release_session(this);
 
   if (r == HSM_RETRY) {
@@ -195,4 +198,5 @@ HttpServerSession::release()
     // (Note: should never get HSM_NOT_FOUND here)
     ink_assert(r == HSM_DONE);
   }
+#endif
 }

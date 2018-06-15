@@ -23,7 +23,7 @@
 
 /****************************************************************************
 
-   Http1ClientSession.cc
+   Tunnel1ClientSession.cc
 
    Description:
 
@@ -31,19 +31,19 @@
  ****************************************************************************/
 
 #include <ts/ink_resolver.h>
-#include "Http1ClientSession.h"
-#include "Http1ClientTransaction.h"
-#include "HttpSM.h"
-#include "HttpDebugNames.h"
-#include "HttpServerSession.h"
+#include "Tunnel1ClientSession.h"
+#include "Tunnel1ClientTransaction.h"
+//#include "HttpSM.h"
+#include "TunnelDebugNames.h"
+#include "TunnelServerSession.h"
 #include "Plugin.h"
 
-#define HttpSsnDebug(fmt, ...) SsnDebug(this, "http_cs", fmt, __VA_ARGS__)
+#define TunnelSsnDebug(fmt, ...) SsnDebug(this, "tunnel_cs", fmt, __VA_ARGS__)
 
 #define STATE_ENTER(state_name, event, vio)                                                             \
   do {                                                                                                  \
     /*ink_assert (magic == HTTP_SM_MAGIC_ALIVE);  REMEMBER (event, NULL, reentrancy_count); */          \
-    HttpSsnDebug("[%" PRId64 "] [%s, %s]", con_id, #state_name, HttpDebugNames::get_event_name(event)); \
+    TunnelSsnDebug("[%" PRId64 "] [%s, %s]", con_id, #state_name, TunnelDebugNames::get_event_name(event)); \
   } while (0)
 
 enum {
@@ -55,14 +55,14 @@ enum {
 
 // We have debugging list that we can use to find stuck
 //  client sessions
-DList(Http1ClientSession, debug_link) debug_cs_list;
+DList(Tunnel1ClientSession, debug_link) debug_cs_list;
 ink_mutex debug_cs_list_mutex;
 
 #endif /* USE_HTTP_DEBUG_LISTS */
 
-ClassAllocator<Http1ClientSession> http1ClientSessionAllocator("http1ClientSessionAllocator");
+ClassAllocator<Tunnel1ClientSession> http1ClientSessionAllocator("http1ClientSessionAllocator");
 
-Http1ClientSession::Http1ClientSession()
+Tunnel1ClientSession::Tunnel1ClientSession()
   : client_vc(nullptr),
     magic(HTTP_CS_MAGIC_DEAD),
     transact_count(0),
@@ -82,7 +82,7 @@ Http1ClientSession::Http1ClientSession()
 }
 
 void
-Http1ClientSession::destroy()
+Tunnel1ClientSession::destroy()
 {
   if (read_state != HCS_CLOSED) {
     return;
@@ -90,7 +90,7 @@ Http1ClientSession::destroy()
   if (!in_destroy) {
     in_destroy = true;
 
-    HttpSsnDebug("[%" PRId64 "] session destroy", con_id);
+    TunnelSsnDebug("[%" PRId64 "] session destroy", con_id);
     ink_release_assert(!client_vc);
     ink_assert(read_buffer);
     ink_release_assert(transact_count == released_transactions);
@@ -101,7 +101,7 @@ Http1ClientSession::destroy()
 }
 
 void
-Http1ClientSession::release_transaction()
+Tunnel1ClientSession::release_transaction()
 {
   released_transactions++;
   if (transact_count == released_transactions) {
@@ -110,7 +110,7 @@ Http1ClientSession::release_transaction()
 }
 
 void
-Http1ClientSession::free()
+Tunnel1ClientSession::free()
 {
   magic = HTTP_CS_MAGIC_DEAD;
   if (read_buffer) {
@@ -140,7 +140,7 @@ Http1ClientSession::free()
 }
 
 void
-Http1ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor)
+Tunnel1ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor)
 {
   ink_assert(new_vc != nullptr);
   ink_assert(client_vc == nullptr);
@@ -196,7 +196,7 @@ Http1ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   ink_mutex_release(&debug_cs_list_mutex);
 #endif
 
-  HttpSsnDebug("[%" PRId64 "] session born, netvc %p", con_id, new_vc);
+  TunnelSsnDebug("[%" PRId64 "] session born, netvc %p", con_id, new_vc);
 
   client_vc->set_tcp_congestion_control(CLIENT_SIDE);
 
@@ -216,17 +216,17 @@ Http1ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 }
 
 VIO *
-Http1ClientSession::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
+Tunnel1ClientSession::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
 {
   return client_vc->do_io_read(c, nbytes, buf);
 }
 
 VIO *
-Http1ClientSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
+Tunnel1ClientSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
 {
   /* conditionally set the tcp initial congestion window
      before our first write. */
-  HttpSsnDebug("tcp_init_cwnd_set %d", (int)tcp_init_cwnd_set);
+  TunnelSsnDebug("tcp_init_cwnd_set %d", (int)tcp_init_cwnd_set);
   if (!tcp_init_cwnd_set) {
     tcp_init_cwnd_set = true;
     set_tcp_init_cwnd();
@@ -239,29 +239,29 @@ Http1ClientSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader 
 }
 
 void
-Http1ClientSession::set_tcp_init_cwnd()
+Tunnel1ClientSession::set_tcp_init_cwnd()
 {
   if (!trans.get_sm()) {
     return;
   }
   int desired_tcp_init_cwnd = trans.get_sm()->t_state.txn_conf->server_tcp_init_cwnd;
-  HttpSsnDebug("desired TCP congestion window is %d", desired_tcp_init_cwnd);
+  TunnelSsnDebug("desired TCP congestion window is %d", desired_tcp_init_cwnd);
   if (desired_tcp_init_cwnd == 0) {
     return;
   }
   if (get_netvc()->set_tcp_init_cwnd(desired_tcp_init_cwnd) != 0) {
-    HttpSsnDebug("set_tcp_init_cwnd(%d) failed", desired_tcp_init_cwnd);
+    TunnelSsnDebug("set_tcp_init_cwnd(%d) failed", desired_tcp_init_cwnd);
   }
 }
 
 void
-Http1ClientSession::do_io_shutdown(ShutdownHowTo_t howto)
+Tunnel1ClientSession::do_io_shutdown(ShutdownHowTo_t howto)
 {
   client_vc->do_io_shutdown(howto);
 }
 
 void
-Http1ClientSession::do_io_close(int alerrno)
+Tunnel1ClientSession::do_io_close(int alerrno)
 {
   if (read_state == HCS_CLOSED) {
     return; // Don't double call session close
@@ -286,8 +286,8 @@ Http1ClientSession::do_io_close(int alerrno)
   }
   if (half_close && this->trans.get_sm()) {
     read_state = HCS_HALF_CLOSED;
-    SET_HANDLER(&Http1ClientSession::state_wait_for_close);
-    HttpSsnDebug("[%" PRId64 "] session half close", con_id);
+    SET_HANDLER(&Tunnel1ClientSession::state_wait_for_close);
+    TunnelSsnDebug("[%" PRId64 "] session half close", con_id);
 
     if (client_vc) {
       // We want the client to know that that we're finished
@@ -313,7 +313,7 @@ Http1ClientSession::do_io_close(int alerrno)
     sm_reader->consume(sm_reader->read_avail());
   } else {
     read_state = HCS_CLOSED;
-    HttpSsnDebug("[%" PRId64 "] session closed", con_id);
+    TunnelSsnDebug("[%" PRId64 "] session closed", con_id);
     HTTP_SUM_DYN_STAT(http_transactions_per_client_con, transact_count);
     HTTP_DECREMENT_DYN_STAT(http_current_client_connections_stat);
     conn_decrease = false;
@@ -328,9 +328,9 @@ Http1ClientSession::do_io_close(int alerrno)
 }
 
 int
-Http1ClientSession::state_wait_for_close(int event, void *data)
+Tunnel1ClientSession::state_wait_for_close(int event, void *data)
 {
-  STATE_ENTER(&Http1ClientSession::state_wait_for_close, event, data);
+  STATE_ENTER(&Tunnel1ClientSession::state_wait_for_close, event, data);
 
   ink_assert(data == ka_vio);
   ink_assert(read_state == HCS_HALF_CLOSED);
@@ -362,9 +362,9 @@ Http1ClientSession::state_wait_for_close(int event, void *data)
 }
 
 int
-Http1ClientSession::state_slave_keep_alive(int event, void *data)
+Tunnel1ClientSession::state_slave_keep_alive(int event, void *data)
 {
-  STATE_ENTER(&Http1ClientSession::state_slave_keep_alive, event, data);
+  STATE_ENTER(&Tunnel1ClientSession::state_slave_keep_alive, event, data);
 
   ink_assert(data == slave_ka_vio);
 
@@ -401,7 +401,7 @@ Http1ClientSession::state_slave_keep_alive(int event, void *data)
 }
 
 int
-Http1ClientSession::state_keep_alive(int event, void *data)
+Tunnel1ClientSession::state_keep_alive(int event, void *data)
 {
   // Route the event.  It is either for client vc or
   //  the origin server slave vc
@@ -412,7 +412,7 @@ Http1ClientSession::state_keep_alive(int event, void *data)
     ink_assert(read_state == HCS_KEEP_ALIVE);
   }
 
-  STATE_ENTER(&Http1ClientSession::state_keep_alive, event, data);
+  STATE_ENTER(&Tunnel1ClientSession::state_keep_alive, event, data);
 
   switch (event) {
   case VC_EVENT_READ_READY:
@@ -441,14 +441,14 @@ Http1ClientSession::state_keep_alive(int event, void *data)
   return 0;
 }
 void
-Http1ClientSession::reenable(VIO *vio)
+Tunnel1ClientSession::reenable(VIO *vio)
 {
   client_vc->reenable(vio);
 }
 
 // Called from the Http1ClientTransaction::release
 void
-Http1ClientSession::release(ProxyClientTransaction *trans)
+Tunnel1ClientSession::release(ProxyClientTransaction *trans)
 {
   ink_assert(read_state == HCS_ACTIVE_READER || read_state == HCS_INIT);
 
@@ -463,13 +463,13 @@ Http1ClientSession::release(ProxyClientTransaction *trans)
   if (more_to_read) {
     trans->destroy();
     trans->set_restart_immediate(true);
-    HttpSsnDebug("[%" PRId64 "] data already in buffer, starting new transaction", con_id);
+    TunnelSsnDebug("[%" PRId64 "] data already in buffer, starting new transaction", con_id);
     new_transaction();
   } else {
-    HttpSsnDebug("[%" PRId64 "] initiating io for next header", con_id);
+    TunnelSsnDebug("[%" PRId64 "] initiating io for next header", con_id);
     trans->set_restart_immediate(false);
     read_state = HCS_KEEP_ALIVE;
-    SET_HANDLER(&Http1ClientSession::state_keep_alive);
+    SET_HANDLER(&Tunnel1ClientSession::state_keep_alive);
     ka_vio = this->do_io_read(this, INT64_MAX, read_buffer);
     ink_assert(slave_ka_vio != ka_vio);
 
@@ -482,7 +482,7 @@ Http1ClientSession::release(ProxyClientTransaction *trans)
 }
 
 void
-Http1ClientSession::new_transaction()
+Tunnel1ClientSession::new_transaction()
 {
   // If the client connection terminated during API callouts we're done.
   if (nullptr == client_vc) {
@@ -504,13 +504,13 @@ Http1ClientSession::new_transaction()
 }
 
 void
-Http1ClientSession::attach_server_session(HttpServerSession *ssession, bool transaction_done)
+Tunnel1ClientSession::attach_server_session(TunnelServerSession *ssession, bool transaction_done)
 {
   if (ssession) {
     ink_assert(bound_ss == nullptr);
     ssession->state = HSS_KA_CLIENT_SLAVE;
     bound_ss        = ssession;
-    HttpSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->con_id);
+    TunnelSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->con_id);
     ink_assert(ssession->get_reader()->read_avail() == 0);
     ink_assert(ssession->get_netvc() != this->get_netvc());
 
@@ -520,7 +520,7 @@ Http1ClientSession::attach_server_session(HttpServerSession *ssession, bool tran
     // Since this our slave, issue an IO to detect a close and
     //  have it call the client session back.  This IO also prevent
     //  the server net conneciton from calling back a dead sm
-    SET_HANDLER(&Http1ClientSession::state_keep_alive);
+    SET_HANDLER(&Tunnel1ClientSession::state_keep_alive);
     slave_ka_vio = ssession->do_io_read(this, INT64_MAX, ssession->read_buffer);
     ink_assert(slave_ka_vio != ka_vio);
 

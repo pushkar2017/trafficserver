@@ -23,7 +23,7 @@
 
 /****************************************************************************
 
-   Http1ClientSession.h
+   Tunnel1ClientSession.h
 
    Description:
 
@@ -38,20 +38,20 @@
 #include "HttpConfig.h"
 #include "IPAllow.h"
 #include "ProxyClientSession.h"
-#include "Http1ClientTransaction.h"
+#include "Tunnel1ClientTransaction.h"
 
 #ifdef USE_HTTP_DEBUG_LISTS
 extern ink_mutex debug_cs_list_mutex;
 #endif
 
 class HttpSM;
-class HttpServerSession;
+class TunnelServerSession;
 
-class Http1ClientSession : public ProxyClientSession
+class Tunnel1ClientSession : public ProxyClientSession
 {
 public:
   typedef ProxyClientSession super; ///< Parent type.
-  Http1ClientSession();
+  Tunnel1ClientSession();
 
   // Implement ProxyClientSession interface.
   void destroy() override;
@@ -91,7 +91,7 @@ public:
   bool
   is_chunked_encoding_supported() const override
   {
-    return true;
+    return false;
   }
 
   NetVConnection *
@@ -128,9 +128,9 @@ public:
   // Indicate we are done with a transaction
   void release(ProxyClientTransaction *trans) override;
 
-  void attach_server_session(HttpServerSession *ssession, bool transaction_done = true) override;
+  void attach_server_session(TunnelServerSession *ssession, bool transaction_done = true) override;
 
-  HttpServerSession *
+  TunnelServerSession *
   get_server_session() const override
   {
     return bound_ss;
@@ -160,7 +160,7 @@ public:
   const char *
   get_protocol_string() const override
   {
-    return "http";
+    return "tunnel";
   }
 
   bool
@@ -170,7 +170,7 @@ public:
   }
 
 private:
-  Http1ClientSession(Http1ClientSession &);
+  Tunnel1ClientSession(Tunnel1ClientSession &);
 
   void new_transaction();
 
@@ -202,20 +202,20 @@ private:
   VIO *ka_vio;
   VIO *slave_ka_vio;
 
-  HttpServerSession *bound_ss;
+  TunnelServerSession *bound_ss;
 
   int released_transactions;
 
 public:
-  // Link<Http1ClientSession> debug_link;
-  LINK(Http1ClientSession, debug_link);
+  // Link<Tunnel1ClientSession> debug_link;
+  LINK(Tunnel1ClientSession, debug_link);
 
   /// Set outbound connection to transparent.
   bool f_outbound_transparent;
   /// Transparently pass-through non-HTTP traffic.
   bool f_transparent_passthrough;
 
-  Http1ClientTransaction trans;
+  Tunnel1ClientTransaction trans;
 };
 
-extern ClassAllocator<Http1ClientSession> http1ClientSessionAllocator;
+extern ClassAllocator<Tunnel1ClientSession> tunnel1ClientSessionAllocator;

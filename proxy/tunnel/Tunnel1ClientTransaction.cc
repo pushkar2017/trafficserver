@@ -1,6 +1,6 @@
 /** @file
 
-  Http1ClientTransaction.cc - The Transaction class for Http1*
+  Tunnel1ClientTransaction.cc - The Transaction class for Http1*
 
   @section license License
 
@@ -21,12 +21,12 @@
   limitations under the License.
  */
 
-#include "Http1ClientTransaction.h"
-#include "Http1ClientSession.h"
+#include "Tunnel1ClientTransaction.h"
+#include "Tunnel1ClientSession.h"
 #include "HttpSM.h"
 
 void
-Http1ClientTransaction::release(IOBufferReader *r)
+Tunnel1ClientTransaction::release(IOBufferReader *r)
 {
   // Must set this inactivity count here rather than in the session because the state machine
   // is not availble then
@@ -47,7 +47,7 @@ Http1ClientTransaction::release(IOBufferReader *r)
 }
 
 void
-Http1ClientTransaction::set_parent(ProxyClientSession *new_parent)
+Tunnel1ClientTransaction::set_parent(ProxyClientSession *new_parent)
 {
   parent                           = new_parent;
   Http1ClientSession *http1_parent = dynamic_cast<Http1ClientSession *>(new_parent);
@@ -61,7 +61,7 @@ Http1ClientTransaction::set_parent(ProxyClientSession *new_parent)
 }
 
 void
-Http1ClientTransaction::transaction_done()
+Tunnel1ClientTransaction::transaction_done()
 {
   if (parent) {
     static_cast<Http1ClientSession *>(parent)->release_transaction();
@@ -69,7 +69,7 @@ Http1ClientTransaction::transaction_done()
 }
 
 bool
-Http1ClientTransaction::allow_half_open() const
+Tunnel1ClientTransaction::allow_half_open() const
 {
   return current_reader ? current_reader->t_state.txn_conf->allow_half_open > 0 : true;
 }

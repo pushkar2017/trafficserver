@@ -28,24 +28,19 @@ AM_CPPFLAGS += \
 	-I$(abs_top_srcdir)/proxy/hdrs \
 	-I$(abs_top_srcdir)/proxy/shared \
 	-I$(abs_top_srcdir)/proxy/logging \
+	-I$(abs_top_srcdir)/proxy/http \
 	$(TS_INCLUDES)
 
 #noinst_HEADERS = HttpProxyServerMain.h
 noinst_LIBRARIES = libtunnel.a
 
 libtunnel_a_SOURCES = \
-	TunnelSessionAccept.cc \
-	TunnelSessionAccept.h \
 	Tunnel1ClientSession.cc \
 	Tunnel1ClientSession.h \
-	Tunnel1ClientTransaction.cc \
-	Tunnel1ClientTransaction.h \
-	TunnelSM.cc \
-	TunnelSM.h \
 	TunnelServerSession.cc \
 	TunnelServerSession.h \
-	TunnelSessionManager.cc \
-	TunnelSessionManager.h
+	TunnelDebugNames.cc \
+	TunnelDebugNames.h
 
 #if BUILD_TESTS
 #libtunnel_a_SOURCES += HttpUpdateTester.cc \

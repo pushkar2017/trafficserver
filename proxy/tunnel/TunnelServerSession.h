@@ -23,7 +23,7 @@
 
 /****************************************************************************
 
-   HttpServerSession.h
+   TunnelServerSession.h
 
    Description:
 
@@ -48,7 +48,7 @@
 #include "HttpConnectionCount.h"
 #include "HttpProxyAPIEnums.h"
 
-class HttpSM;
+class TunnelSM;
 class MIOBuffer;
 class IOBufferReader;
 
@@ -60,14 +60,14 @@ enum HSS_State {
 };
 
 enum {
-  HTTP_SS_MAGIC_ALIVE = 0x0123FEED,
-  HTTP_SS_MAGIC_DEAD  = 0xDEADFEED,
+  TUNNEL_SS_MAGIC_ALIVE = 0x0123FEED,
+  TUNNEL_SS_MAGIC_DEAD  = 0xDEADFEED,
 };
 
-class HttpServerSession : public VConnection
+class TunnelServerSession : public VConnection
 {
 public:
-  HttpServerSession()
+  TunnelServerSession()
     : VConnection(nullptr),
       hostname_hash(),
       con_id(0),
@@ -82,7 +82,7 @@ public:
       connection_count(nullptr),
       read_buffer(nullptr),
       server_vc(nullptr),
-      magic(HTTP_SS_MAGIC_DEAD),
+      magic(TUNNEL_SS_MAGIC__DEAD),
       buf_reader(nullptr)
   {
   }
@@ -163,8 +163,8 @@ public:
   TSServerSessionSharingPoolType sharing_pool;
   //  int share_session;
 
-  LINK(HttpServerSession, ip_hash_link);
-  LINK(HttpServerSession, host_hash_link);
+  LINK(TunnelServerSession, ip_hash_link);
+  LINK(TunnelServerSession, host_hash_link);
 
   // Keep track of connection limiting and a pointer to the
   // singleton that keeps track of the connection counts.
@@ -195,7 +195,7 @@ public:
   }
 
 private:
-  HttpServerSession(HttpServerSession &);
+  TunnelServerSession(TunnelServerSession &);
 
   NetVConnection *server_vc;
   int magic;
@@ -203,10 +203,10 @@ private:
   IOBufferReader *buf_reader;
 };
 
-extern ClassAllocator<HttpServerSession> httpServerSessionAllocator;
+extern ClassAllocator<TunnelServerSession> tunnelServerSessionAllocator;
 
 inline void
-HttpServerSession::attach_hostname(const char *hostname)
+TunnelServerSession::attach_hostname(const char *hostname)
 {
   if (CRYPTO_HASH_ZERO == hostname_hash) {
     CryptoContext().hash_immediate(hostname_hash, (unsigned char *)hostname, strlen(hostname));
