@@ -23,7 +23,7 @@
 
 #include "L4RSessionAccept.h"
 #include "IPAllow.h"
-#include "Http1ClientSession.h"
+//#include "Http1ClientSession.h"
 #include "I_Machine.h"
 
 bool
@@ -104,7 +104,7 @@ L4RSessionAccept::mainEvent(int event, void *data)
     /////////////////////////////////////////////////
 
     // FIX: add time to user_agent_hangup
-    HTTP_SUM_DYN_STAT(http_ua_msecs_counts_errors_pre_accept_hangups_stat, 0);
+    //HTTP_SUM_DYN_STAT(http_ua_msecs_counts_errors_pre_accept_hangups_stat, 0);
   }
 
   ink_abort("HTTP accept received fatal error: errno = %d", -((int)(intptr_t)data));

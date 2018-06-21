@@ -18,7 +18,7 @@
 
 include $(top_srcdir)/build/tidy.mk
 
-SUBDIRS = hdrs shared http http2 logging config
+SUBDIRS = hdrs shared http http2 logging config l4r
 
 noinst_LIBRARIES = libproxy.a
 
@@ -32,7 +32,6 @@ AM_CPPFLAGS += \
 	-I$(abs_srcdir)/hdrs \
 	-I$(abs_top_srcdir)/mgmt \
 	-I$(abs_top_srcdir)/mgmt/utils \
-	-I$(abs_top_srcdir)/l4r \
 	$(TS_INCLUDES)
 
 noinst_HEADERS = \

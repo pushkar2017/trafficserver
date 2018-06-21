@@ -32,7 +32,7 @@ AM_CPPFLAGS += \
 #noinst_HEADERS = HttpProxyServerMain.h
 noinst_LIBRARIES = libl4r.a
 
-libhttp_a_SOURCES = \
+libl4r_a_SOURCES = \
 	L4RSessionAccept.cc \
 	L4RSessionAccept.h
 
