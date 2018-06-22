@@ -182,7 +182,7 @@ L4RSessionAcceptOptions::setSessionProtocolPreference(SessionProtocolSet const &
    from the top level configuration to the HTTP session.
 */
 
-class L4RSessionAccept : public SessionAccept, private detail::L4RSessionAcceptOptions
+class L4RSessionAccept : public SessionAccept//, private detail::L4RSessionAcceptOptions
 {
 private:
   typedef L4RSessionAccept self; ///< Self reference type.
@@ -197,7 +197,8 @@ public:
       initialization order issues. It is important to pick up data that is read
       from the config file and a static is initialized long before that point.
   */
-  L4RSessionAccept(Options const &opt = Options()) : SessionAccept(nullptr), detail::L4RSessionAcceptOptions(opt) // copy these.
+  //L4RSessionAccept(Options const &opt = Options()) : SessionAccept(nullptr), detail::L4RSessionAcceptOptions(opt) // copy these.
+  L4RSessionAccept() : SessionAccept(nullptr)
   {
     SET_HANDLER(&L4RSessionAccept::mainEvent);
     return;

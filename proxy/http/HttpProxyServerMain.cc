@@ -40,6 +40,7 @@
 #include "http2/Http2SessionAccept.h"
 #include "HttpConnectionCount.h"
 #include "HttpProxyServerMain.h"
+#include "L4RSessionAccept.h"
 
 #include <vector>
 
@@ -210,6 +211,13 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
   ProtocolProbeSessionAccept *probe = new ProtocolProbeSessionAccept();
   HttpSessionAccept *http           = nullptr; // don't allocate this unless it will be used.
   probe->proxyPort                  = &port;
+
+  // Layer 4 routing
+  if (port.m_port == 8000) {
+    //detail::L4RSessionAcceptOptions opt;
+    L4RSessionAccept *l4r = new L4RSessionAccept;
+    probe->registerEndpoint(ProtocolProbeSessionAccept::PROTO_L4R, l4r);
+  }
 
   if (port.m_session_protocol_preference.intersects(HTTP_PROTOCOL_SET)) {
     http = new HttpSessionAccept(accept_opt);

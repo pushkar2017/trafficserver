@@ -32,6 +32,7 @@ struct ProtocolProbeSessionAcceptEnums {
   enum ProtoGroupKey {
     PROTO_HTTP,    ///< HTTP group (0.9-1.1)
     PROTO_HTTP2,   ///< HTTP 2 group
+    PROTO_L4R,     ///< Layer 4 routing
     N_PROTO_GROUPS ///< Size value.
   };
 };

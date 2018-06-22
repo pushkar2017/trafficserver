@@ -35,9 +35,11 @@ L4RSessionAccept::accept(NetVConnection *netvc, MIOBuffer *iobuf, IOBufferReader
 
   // The backdoor port is now only bound to "localhost", so no
   // reason to check for if it's incoming from "localhost" or not.
+#if 0
   if (backdoor) {
     acl_record = IpAllow::AllMethodAcl();
   } else {
+ #endif
     acl_record = testIpAllowPolicy(client_ip);
     if (!acl_record) {
       ////////////////////////////////////////////////////
@@ -46,7 +48,9 @@ L4RSessionAccept::accept(NetVConnection *netvc, MIOBuffer *iobuf, IOBufferReader
       Warning("client '%s' prohibited by ip-allow policy", ats_ip_ntop(client_ip, ipb, sizeof(ipb)));
       return false;
     }
+ #if 0
   }
+#endif
 
   // Set the transport type if not already set
   if (HttpProxyPort::TRANSPORT_NONE == netvc->attributes) {
