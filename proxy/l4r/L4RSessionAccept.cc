@@ -54,7 +54,7 @@ L4RSessionAccept::accept(NetVConnection *netvc, MIOBuffer *iobuf, IOBufferReader
 
   // Set the transport type if not already set
   if (HttpProxyPort::TRANSPORT_NONE == netvc->attributes) {
-    netvc->attributes = transport_type;
+    //netvc->attributes = transport_type;
   }
 
   if (is_debug_tag_set("http_seq")) {

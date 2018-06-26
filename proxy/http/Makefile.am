@@ -32,7 +32,6 @@ AM_CPPFLAGS += \
 	-I$(abs_top_srcdir)/proxy/http/remap \
 	-I$(abs_top_srcdir)/proxy/logging \
 	-I$(abs_top_srcdir)/proxy/http2 \
-	-I$(abs_top_srcdir)/proxy/l4r \
 	$(TS_INCLUDES)
 
 noinst_HEADERS = HttpProxyServerMain.h
