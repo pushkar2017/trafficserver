@@ -177,6 +177,11 @@ make_net_accept_options(const HttpProxyPort *port, unsigned nthreads)
 static void
 MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned nthreads)
 {
+  // Do Layer 4 routing on port 8000
+  if (port.m_port == 8000) {
+    return;
+  }
+
   NetProcessor::AcceptOptions &net_opt = acceptor._net_opt;
   HttpSessionAccept::Options accept_opt;
 

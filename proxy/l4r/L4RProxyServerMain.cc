@@ -180,12 +180,17 @@ make_net_accept_options2(const HttpProxyPort *port, unsigned nthreads)
 static void
 MakeL4RProxyAcceptor(L4RProxyAcceptor &acceptor, HttpProxyPort &port, unsigned nthreads)
 {
+  // Do http/https routing if port is not 8000
+  if (port.m_port != 8000) {
+    return;
+  }
+
   NetProcessor::AcceptOptions &net_opt = acceptor._net_opt;
 #if 0
   HttpSessionAccept::Options accept_opt;
-
+#endif
   net_opt = make_net_accept_options2(&port, nthreads);
-
+#if 0
   accept_opt.f_outbound_transparent = port.m_outbound_transparent_p;
   accept_opt.transport_type         = port.m_type;
   accept_opt.setHostResPreference(port.m_host_res_preference);
@@ -217,7 +222,6 @@ MakeL4RProxyAcceptor(L4RProxyAcceptor &acceptor, HttpProxyPort &port, unsigned n
   probe->proxyPort                  = &port;
 
   // Layer 4 routing
-  port.m_port = 8000;
   if (port.m_port == 8000) {
     //detail::L4RSessionAcceptOptions opt;
     l4r = new L4RSessionAccept;
