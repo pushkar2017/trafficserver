@@ -31,6 +31,7 @@ traffic_server_traffic_server_CPPFLAGS = \
 	-I$(abs_top_srcdir)/proxy/http/remap \
 	-I$(abs_top_srcdir)/proxy/hdrs \
 	-I$(abs_top_srcdir)/proxy/shared \
+	-I$(abs_top_srcdir)/proxy/l4r \
 	-I$(abs_top_srcdir)/mgmt \
 	-I$(abs_top_srcdir)/mgmt/utils \
 	$(TS_INCLUDES) \
@@ -64,6 +65,7 @@ traffic_server_traffic_server_LDADD = \
 	$(top_builddir)/proxy/logging/liblogcollation.a \
 	$(top_builddir)/proxy/hdrs/libhdrs.a \
 	$(top_builddir)/proxy/shared/libdiagsconfig.a \
+	$(top_builddir)/proxy/l4r/libl4r.a \
 	$(top_builddir)/mgmt/libmgmt_p.la \
 	$(top_builddir)/iocore/utils/libinkutils.a \
 	$(top_builddir)/iocore/dns/libinkdns.a \

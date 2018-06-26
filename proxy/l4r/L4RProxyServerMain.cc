@@ -144,7 +144,7 @@ std::vector<L4RProxyAcceptor> L4RProxyAcceptors;
 
 // Called from InkAPI.cc
 NetProcessor::AcceptOptions
-make_net_accept_options(const HttpProxyPort *port, unsigned nthreads)
+make_net_accept_options2(const HttpProxyPort *port, unsigned nthreads)
 {
   NetProcessor::AcceptOptions net;
 
@@ -184,7 +184,7 @@ MakeL4RProxyAcceptor(L4RProxyAcceptor &acceptor, HttpProxyPort &port, unsigned n
 #if 0
   HttpSessionAccept::Options accept_opt;
 
-  net_opt = make_net_accept_options(&port, nthreads);
+  net_opt = make_net_accept_options2(&port, nthreads);
 
   accept_opt.f_outbound_transparent = port.m_outbound_transparent_p;
   accept_opt.transport_type         = port.m_type;
