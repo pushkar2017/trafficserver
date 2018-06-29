@@ -38,6 +38,7 @@
 #include "HttpConfig.h"
 #include "IPAllow.h"
 #include "ProxyClientSession.h"
+#include "L4RServerSession.h"
 //#include "Http1ClientTransaction.h"
 
 #ifdef USE_HTTP_DEBUG_LISTS
@@ -121,8 +122,7 @@ public:
   VConnection *
   get_server_session() const override
   {
-    //return bound_ss;
-    return nullptr;
+    return bound_ss;
   }
 
   void
@@ -185,7 +185,7 @@ private:
   VIO *ka_vio;
   VIO *slave_ka_vio;
 
-  //HttpServerSession *bound_ss;
+  L4RServerSession *bound_ss;
 
   int released_transactions;
 

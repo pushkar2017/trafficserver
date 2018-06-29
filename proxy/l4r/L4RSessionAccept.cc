@@ -62,7 +62,7 @@ L4RSessionAccept::accept(NetVConnection *netvc, MIOBuffer *iobuf, IOBufferReader
           ats_ip_nptop(client_ip, ipb, sizeof(ipb)), netvc->attributes);
   }
 
-  //Http1ClientSession *new_session = THREAD_ALLOC_INIT(http1ClientSessionAllocator, this_ethread());
+  //L4RClientSession *new_session = THREAD_ALLOC_INIT(l4rClientSessionAllocator, this_ethread());
 
   //// copy over session related data.
   //new_session->f_outbound_transparent    = f_outbound_transparent;

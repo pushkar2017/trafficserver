@@ -39,6 +39,8 @@ libl4r_a_SOURCES = \
 	L4RProxyServerMain.h \
 	L4RClientSession.cc \
 	L4RClientSession.h \
+	L4RServerSession.cc \
+	L4RServerSession.h \
 	L4RSessionAccept.cc \
 	L4RSessionAccept.h
 
