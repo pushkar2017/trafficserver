@@ -28,6 +28,7 @@ AM_CPPFLAGS += \
 	-I$(abs_top_srcdir)/proxy/shared \
 	-I$(abs_top_srcdir)/proxy/logging \
 	-I$(abs_top_srcdir)/proxy/hdrs \
+	-I$(abs_top_srcdir)/proxy/http \
 	$(TS_INCLUDES)
 
 #noinst_HEADERS = HttpProxyServerMain.h
@@ -36,6 +37,8 @@ noinst_LIBRARIES = libl4r.a
 libl4r_a_SOURCES = \
 	L4RProxyServerMain.cc \
 	L4RProxyServerMain.h \
+	L4RClientSession.cc \
+	L4RClientSession.h \
 	L4RSessionAccept.cc \
 	L4RSessionAccept.h
 
