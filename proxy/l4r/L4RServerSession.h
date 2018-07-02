@@ -52,14 +52,19 @@
 class MIOBuffer;
 class IOBufferReader;
 
-#if 0
-enum HSS_State {
-  HSS_INIT,
-  HSS_ACTIVE,
-  HSS_KA_CLIENT_SLAVE,
-  HSS_KA_SHARED,
+enum {
+  L4R_SS_MAGIC_ALIVE = 0x0123FEED,
+  L4R_SS_MAGIC_DEAD  = 0xDEADFEED,
 };
 
+enum LSS_State {
+  LSS_INIT,
+  LSS_ACTIVE,
+  LSS_KA_CLIENT_SLAVE,
+  LSS_KA_SHARED,
+};
+
+#if 0
 enum {
   HTTP_SS_MAGIC_ALIVE = 0x0123FEED,
   HTTP_SS_MAGIC_DEAD  = 0xDEADFEED,
@@ -74,7 +79,7 @@ public:
       hostname_hash(),
       con_id(0),
       transact_count(0),
-      state(HSS_INIT),
+      state(LSS_INIT),
       server_trans_stat(0),
       private_session(false),
       sharing_match(TS_SERVER_SESSION_SHARING_MATCH_BOTH),
@@ -83,7 +88,7 @@ public:
       //connection_count(nullptr),
       read_buffer(nullptr),
       server_vc(nullptr),
-      magic(HTTP_SS_MAGIC_DEAD),
+      magic(L4R_SS_MAGIC_DEAD),
       buf_reader(nullptr)
   {
   }
@@ -142,7 +147,7 @@ public:
 
   int64_t con_id;
   int transact_count;
-  HSS_State state;
+  LSS_State state;
 
   // Used to verify we are recording the server
   //   transaction stat properly

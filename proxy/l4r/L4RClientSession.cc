@@ -43,7 +43,7 @@
 #define STATE_ENTER(state_name, event, vio)                                                             \
   do {                                                                                                  \
     /*ink_assert (magic == HTTP_SM_MAGIC_ALIVE);  REMEMBER (event, NULL, reentrancy_count); */          \
-    L4rSsnDebug("[%" PRId64 "] [%s, %s]", con_id, #state_name, HttpDebugNames::get_event_name(event)); \
+    L4rSsnDebug("[%" PRId64 "] [%s, %s]", con_id, #state_name, "xxx"); \
   } while (0)
 
 enum {
@@ -500,19 +500,21 @@ L4RClientSession::new_transaction()
 
   read_state = HCS_ACTIVE_READER;
 
-  trans.set_parent(this);
+  //trans.set_parent(this);
   transact_count++;
 
   client_vc->add_to_active_queue();
-  trans.new_transaction();
+  //trans.new_transaction();
 }
 
 void
-L4RClientSession::attach_server_session(VConnection *ssession, bool transaction_done)
+L4RClientSession::attach_server_session(VConnection *vcssession, bool transaction_done)
 {
+  // TODO: Remove this hack!
+  L4RServerSession *ssession = dynamic_cast<L4RServerSession *>(vcssession);
   if (ssession) {
     ink_assert(bound_ss == nullptr);
-    ssession->state = HSS_KA_CLIENT_SLAVE;
+    ssession->state = LSS_KA_CLIENT_SLAVE;
     bound_ss        = ssession;
     L4rSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->con_id);
     ink_assert(ssession->get_reader()->read_avail() == 0);
@@ -532,8 +534,9 @@ L4RClientSession::attach_server_session(VConnection *ssession, bool transaction_
     ssession->do_io_write(this, 0, nullptr);
 
     if (transaction_done) {
-      ssession->get_netvc()->set_inactivity_timeout(
-        HRTIME_SECONDS(trans.get_sm()->t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      //ssession->get_netvc()->set_inactivity_timeout(
+      //  HRTIME_SECONDS(trans.get_sm()->t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      ssession->get_netvc()->set_inactivity_timeout(5);
       ssession->get_netvc()->cancel_active_timeout();
     } else {
       // we are serving from the cache - this could take a while.

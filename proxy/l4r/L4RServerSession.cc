@@ -43,7 +43,7 @@ L4RServerSession::destroy()
   ink_release_assert(server_vc == nullptr);
   ink_assert(read_buffer);
   ink_assert(server_trans_stat == 0);
-  magic = HTTP_SS_MAGIC_DEAD;
+  magic = L4R_SS_MAGIC_DEAD;
   if (read_buffer) {
     free_MIOBuffer(read_buffer);
     read_buffer = nullptr;
@@ -53,7 +53,7 @@ L4RServerSession::destroy()
   if (TS_SERVER_SESSION_SHARING_POOL_THREAD == sharing_pool) {
     THREAD_FREE(this, l4rServerSessionAllocator, this_thread());
   } else {
-    httpServerSessionAllocator.free(this);
+    l4rServerSessionAllocator.free(this);
   }
 }
 
@@ -69,29 +69,29 @@ L4RServerSession::new_connection(NetVConnection *new_vc)
   // Unique client session identifier.
   con_id = ink_atomic_increment((int64_t *)(&next_ss_id), 1);
 
-  magic = HTTP_SS_MAGIC_ALIVE;
+  magic = L4R_SS_MAGIC_ALIVE;
   //HTTP_SUM_GLOBAL_DYN_STAT(http_current_server_connections_stat, 1); // Update the true global stat
   //HTTP_INCREMENT_DYN_STAT(http_total_server_connections_stat);
   // Check to see if we are limiting the number of connections
   // per host
-  if (enable_origin_connection_limiting == true) {
-    if (connection_count == nullptr) {
-      connection_count = ConnectionCount::getInstance();
-    }
-    connection_count->incrementCount(get_server_ip(), hostname_hash, sharing_match);
-    ip_port_text_buffer addrbuf;
-    Debug("l4r_ss", "[%" PRId64 "] new connection, ip: %s, count: %u", con_id,
-          ats_ip_nptop(&get_server_ip().sa, addrbuf, sizeof(addrbuf)),
-          connection_count->getCount(get_server_ip(), hostname_hash, sharing_match));
-  }
+  //if (enable_origin_connection_limiting == true) {
+  //  if (connection_count == nullptr) {
+  //    connection_count = ConnectionCount::getInstance();
+  //  }
+  //  connection_count->incrementCount(get_server_ip(), hostname_hash, sharing_match);
+  //  ip_port_text_buffer addrbuf;
+  //  Debug("l4r_ss", "[%" PRId64 "] new connection, ip: %s, count: %u", con_id,
+  //        ats_ip_nptop(&get_server_ip().sa, addrbuf, sizeof(addrbuf)),
+  //        connection_count->getCount(get_server_ip(), hostname_hash, sharing_match));
+  //}
 #ifdef LAZY_BUF_ALLOC
-  read_buffer = new_empty_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
+  read_buffer = new_empty_MIOBuffer(BUFFER_SIZE_INDEX_8K);
 #else
   read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
 #endif
   buf_reader = read_buffer->alloc_reader();
   Debug("l4r_ss", "[%" PRId64 "] session born, netvc %p", con_id, new_vc);
-  state = HSS_INIT;
+  state = LSS_INIT;
 
   new_vc->set_tcp_congestion_control(SERVER_SIDE);
 }
@@ -117,8 +117,8 @@ L4RServerSession::do_io_shutdown(ShutdownHowTo_t howto)
 void
 L4RServerSession::do_io_close(int alerrno)
 {
-  if (state == HSS_ACTIVE) {
-    HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
+  if (state == LSS_ACTIVE) {
+    //HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
     this->server_trans_stat--;
   }
 
@@ -165,7 +165,7 @@ L4RServerSession::release()
 {
   Debug("l4r_ss", "Releasing session, private_session=%d, sharing_match=%d", private_session, sharing_match);
   // Set our state to KA for stat issues
-  state = HSS_KA_SHARED;
+  state = LSS_KA_SHARED;
 
   server_vc->control_flags.set_flags(0);
 
