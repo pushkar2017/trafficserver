@@ -75,6 +75,7 @@ extern "C" int plock(int);
 #include "ProcessManager.h"
 #include "ProxyConfig.h"
 #include "HttpProxyServerMain.h"
+#include "L4RProxyServerMain.h"
 #include "HttpBodyFactory.h"
 #include "ProxyClientSession.h"
 #include "logging/Log.h"
@@ -1934,6 +1935,7 @@ main(int /* argc ATS_UNUSED */, const char **argv)
     //////////////////////////////////////
 
     init_accept_HttpProxyServer(num_accept_threads);
+    init_accept_L4RProxyServer(num_accept_threads);
     transformProcessor.start();
 
     int http_enabled = 1;
@@ -1962,6 +1964,7 @@ main(int /* argc ATS_UNUSED */, const char **argv)
         Debug("http_listen", "Delaying listen, waiting for cache initialization");
       } else {
         start_HttpProxyServer(); // PORTS_READY_HOOK called from in here
+        start_L4RProxyServer();
       }
     }
     SNIConfig::cloneProtoSet();

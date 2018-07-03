@@ -53,10 +53,10 @@ struct ProxyError {
   uint32_t code       = 0;
 };
 
-class ProxyClientSession : public VConnection
+class BasicProxyClientSession : public VConnection
 {
 public:
-  ProxyClientSession();
+  BasicProxyClientSession();
 
   virtual void destroy() = 0;
   virtual void free();
@@ -147,19 +147,6 @@ public:
   // Initiate an API hook invocation.
   void do_api_callout(TSHttpHookID id);
 
-  // Override if your session protocol allows this.
-  virtual bool
-  is_transparent_passthrough_allowed() const
-  {
-    return false;
-  }
-
-  virtual bool
-  is_chunked_encoding_supported() const
-  {
-    return false;
-  }
-
   // Override if your session protocol cares.
   virtual void
   set_half_close_flag(bool flag)
@@ -200,11 +187,11 @@ public:
   }
 
   virtual void
-  attach_server_session(HttpServerSession *ssession, bool transaction_done = true)
+  attach_server_session(VConnection *ssession, bool transaction_done = true)
   {
   }
 
-  virtual HttpServerSession *
+  virtual VConnection *
   get_server_session() const
   {
     return nullptr;
@@ -286,8 +273,8 @@ public:
   ink_hrtime ssn_last_txn_time = 0;
 
   // noncopyable
-  ProxyClientSession(ProxyClientSession &) = delete;
-  ProxyClientSession &operator=(const ProxyClientSession &) = delete;
+  BasicProxyClientSession(BasicProxyClientSession &) = delete;
+  BasicProxyClientSession &operator=(const BasicProxyClientSession &) = delete;
 
 protected:
   // XXX Consider using a bitwise flags variable for the following flags, so
@@ -316,4 +303,44 @@ private:
   // be active until the transaction goes through or the client
   // aborts.
   bool m_active = false;
+};
+
+class ProxyClientSession : public BasicProxyClientSession
+{
+public:
+  ProxyClientSession();
+
+  // Override if your session protocol allows this.
+  virtual bool
+  is_transparent_passthrough_allowed() const
+  {
+    return false;
+  }
+
+  virtual bool
+  is_chunked_encoding_supported() const
+  {
+    return false;
+  }
+
+  virtual void
+  attach_server_session(HttpServerSession *ssession, bool transaction_done = true)
+  {
+  }
+
+  virtual HttpServerSession *
+  get_server_session() const
+  {
+    return nullptr;
+  }
+
+  // noncopyable
+  ProxyClientSession(ProxyClientSession &) = delete;
+  ProxyClientSession &operator=(const ProxyClientSession &) = delete;
+
+protected:
+  // XXX Consider using a bitwise flags variable for the following flags, so
+  // that we can make the best use of internal alignment padding.
+
+private:
 };

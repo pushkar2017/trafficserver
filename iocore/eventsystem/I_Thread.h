@@ -142,6 +142,8 @@ public:
   ProxyAllocator ioDataAllocator;
   ProxyAllocator ioAllocator;
   ProxyAllocator ioBlockAllocator;
+  ProxyAllocator l4rClientSessionAllocator;
+  ProxyAllocator l4rServerSessionAllocator;
 
 public:
   /** Start the underlying thread.

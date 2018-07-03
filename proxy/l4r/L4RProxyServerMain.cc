@@ -24,34 +24,35 @@
 #include "ts/ink_config.h"
 #include "P_Net.h"
 #include "Main.h"
-#include "HttpConfig.h"
-#include "HttpSessionAccept.h"
-#include "ReverseProxy.h"
-#include "HttpSessionManager.h"
-#include "HttpUpdateSM.h"
+//#include "HttpConfig.h"
+//#include "HttpSessionAccept.h"
+//#include "ReverseProxy.h"
+//#include "HttpSessionManager.h"
+//#include "HttpUpdateSM.h"
 #ifdef USE_HTTP_DEBUG_LISTS
-#include "Http1ClientSession.h"
+//#include "Http1ClientSession.h"
 #endif
-#include "HttpPages.h"
-#include "HttpTunnel.h"
+//#include "HttpPages.h"
+//#include "HttpTunnel.h"
 #include "ts/Tokenizer.h"
 #include "P_SSLNextProtocolAccept.h"
 #include "ProtocolProbeSessionAccept.h"
-#include "http2/Http2SessionAccept.h"
-#include "HttpConnectionCount.h"
-#include "HttpProxyServerMain.h"
+//#include "http2/Http2SessionAccept.h"
+//#include "HttpConnectionCount.h"
+#include "L4RProxyServerMain.h"
+#include "L4RSessionAccept.h"
 
 #include <vector>
 
-HttpSessionAccept *plugin_http_accept             = nullptr;
-HttpSessionAccept *plugin_http_transparent_accept = nullptr;
+//HttpSessionAccept *plugin_http_accept             = nullptr;
+//HttpSessionAccept *plugin_http_transparent_accept = nullptr;
 
-static SLL<SSLNextProtocolAccept> ssl_plugin_acceptors;
-static Ptr<ProxyMutex> ssl_plugin_mutex;
+//static SLL<SSLNextProtocolAccept> ssl_plugin_acceptors;
+//static Ptr<ProxyMutex> ssl_plugin_mutex;
 
-std::mutex proxyServerMutex;
-std::condition_variable proxyServerCheck;
-bool et_net_threads_ready = false;
+//std::mutex proxyServerMutex;
+//std::condition_variable proxyServerCheck;
+//bool et_net_threads_ready = false;
 
 extern int num_of_net_threads;
 extern int num_accept_threads;
@@ -72,12 +73,13 @@ TS_bwf_ethread(ts::BufferWriter &w, ts::BWFSpec const &spec)
 } // namespace
 
 // File / process scope initializations
-static bool HTTP_SERVER_INITIALIZED __attribute__((unused)) = []() -> bool {
+static bool L4R_SERVER_INITIALIZED __attribute__((unused)) = []() -> bool {
   ts::bwf_register_global("ts-thread", &TS_bwf_thread);
   ts::bwf_register_global("ts-ethread", &TS_bwf_ethread);
   return true;
 }();
 
+#if 0
 bool
 ssl_register_protocol(const char *protocol, Continuation *contp)
 {
@@ -105,6 +107,7 @@ ssl_unregister_protocol(const char *protocol, Continuation *contp)
 
   return true;
 }
+#endif
 
 /////////////////////////////////////////////////////////////////
 //
@@ -118,14 +121,14 @@ ssl_unregister_protocol(const char *protocol, Continuation *contp)
     starting to accept on them.
 
 */
-struct HttpProxyAcceptor {
+struct L4RProxyAcceptor {
   /// Accept continuation.
   Continuation *_accept;
   /// Options for @c NetProcessor.
   NetProcessor::AcceptOptions _net_opt;
 
   /// Default constructor.
-  HttpProxyAcceptor() : _accept(nullptr) {}
+  L4RProxyAcceptor() : _accept(nullptr) {}
 };
 
 /** Global acceptors.
@@ -137,11 +140,11 @@ struct HttpProxyAcceptor {
     @c SSLNextProtocolAccept is a subclass of @c Cont instead of @c
     HttpAccept.
 */
-std::vector<HttpProxyAcceptor> HttpProxyAcceptors;
+std::vector<L4RProxyAcceptor> L4RProxyAcceptors;
 
 // Called from InkAPI.cc
 NetProcessor::AcceptOptions
-make_net_accept_options(const HttpProxyPort *port, unsigned nthreads)
+make_net_accept_options2(const HttpProxyPort *port, unsigned nthreads)
 {
   NetProcessor::AcceptOptions net;
 
@@ -164,29 +167,30 @@ make_net_accept_options(const HttpProxyPort *port, unsigned nthreads)
 
     if (port->m_inbound_ip.isValid()) {
       net.local_ip = port->m_inbound_ip;
-    } else if (AF_INET6 == port->m_family && HttpConfig::m_master.inbound_ip6.isIp6()) {
+    }/* else if (AF_INET6 == port->m_family && HttpConfig::m_master.inbound_ip6.isIp6()) {
       net.local_ip = HttpConfig::m_master.inbound_ip6;
     } else if (AF_INET == port->m_family && HttpConfig::m_master.inbound_ip4.isIp4()) {
       net.local_ip = HttpConfig::m_master.inbound_ip4;
-    }
+    }*/
   }
 
   return net;
 }
 
 static void
-MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned nthreads)
+MakeL4RProxyAcceptor(L4RProxyAcceptor &acceptor, HttpProxyPort &port, unsigned nthreads)
 {
-  // Do Layer 4 routing on port 8000
-  if (port.m_port == 8000) {
+  // Do http/https routing if port is not 8000
+  if (port.m_port != 8000) {
     return;
   }
 
   NetProcessor::AcceptOptions &net_opt = acceptor._net_opt;
+#if 0
   HttpSessionAccept::Options accept_opt;
-
-  net_opt = make_net_accept_options(&port, nthreads);
-
+#endif
+  net_opt = make_net_accept_options2(&port, nthreads);
+#if 0
   accept_opt.f_outbound_transparent = port.m_outbound_transparent_p;
   accept_opt.transport_type         = port.m_type;
   accept_opt.setHostResPreference(port.m_host_res_preference);
@@ -204,6 +208,7 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
   } else if (HttpConfig::m_master.outbound_ip6.isValid()) {
     accept_opt.outbound_ip6 = HttpConfig::m_master.outbound_ip6;
   }
+#endif
 
   // OK the way this works is that the fallback for each port is a protocol
   // probe acceptor. For SSL ports, we can stack a NPN+ALPN acceptor in front
@@ -213,18 +218,17 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
   // XXX the protocol probe should be a configuration option.
 
   ProtocolProbeSessionAccept *probe = new ProtocolProbeSessionAccept();
-  HttpSessionAccept *http           = nullptr; // don't allocate this unless it will be used.
+  L4RSessionAccept *l4r            = nullptr; // don't allocate this unless it will be used.
   probe->proxyPort                  = &port;
 
-  if (port.m_session_protocol_preference.intersects(HTTP_PROTOCOL_SET)) {
-    http = new HttpSessionAccept(accept_opt);
-    probe->registerEndpoint(ProtocolProbeSessionAccept::PROTO_HTTP, http);
+  // Layer 4 routing
+  if (port.m_port == 8000) {
+    //detail::L4RSessionAcceptOptions opt;
+    l4r = new L4RSessionAccept;
+    probe->registerEndpoint(ProtocolProbeSessionAccept::PROTO_L4R, l4r);
   }
 
-  if (port.m_session_protocol_preference.intersects(HTTP2_PROTOCOL_SET)) {
-    probe->registerEndpoint(ProtocolProbeSessionAccept::PROTO_HTTP2, new Http2SessionAccept(accept_opt));
-  }
-
+#if 0
   if (port.isSSL()) {
     SSLNextProtocolAccept *ssl = new SSLNextProtocolAccept(probe, port.m_transparent_passthrough);
 
@@ -256,26 +260,29 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
     ssl->proxyPort   = &port;
     acceptor._accept = ssl;
   } else {
+#endif
     acceptor._accept = probe;
+#if 0
   }
+#endif
 }
 
 /// Do all pre-thread initialization / setup.
 void
-prep_HttpProxyServer()
+prep_L4RProxyServer()
 {
-  httpSessionManager.init();
+  //httpSessionManager.init();
 }
 
 /** Set up all the accepts and sockets.
  */
 void
-init_accept_HttpProxyServer(int n_accept_threads)
+init_accept_L4RProxyServer(int n_accept_threads)
 {
   HttpProxyPort::Group &proxy_ports = HttpProxyPort::global();
 
-  init_reverse_proxy();
-  http_pages_init();
+  //init_reverse_proxy();
+  //http_pages_init();
 
 #ifdef USE_HTTP_DEBUG_LISTS
   ink_mutex_init(&debug_sm_list_mutex);
@@ -286,6 +293,7 @@ init_accept_HttpProxyServer(int n_accept_threads)
   //   The equivalent of the connecting to localhost on the  proxy
   //   port but without going through the operating system
   //
+#if 0
   if (plugin_http_accept == nullptr) {
     plugin_http_accept = new HttpSessionAccept();
   }
@@ -300,12 +308,13 @@ init_accept_HttpProxyServer(int n_accept_threads)
   if (!ssl_plugin_mutex) {
     ssl_plugin_mutex = new_ProxyMutex();
   }
+#endif
 
   // Do the configuration defined ports.
   // Assign temporary empty objects of proxy ports size
-  HttpProxyAcceptors.assign(proxy_ports.size(), HttpProxyAcceptor());
+  L4RProxyAcceptors.assign(proxy_ports.size(), L4RProxyAcceptor());
   for (int i = 0, n = proxy_ports.size(); i < n; ++i) {
-    MakeHttpProxyAcceptor(HttpProxyAcceptors.at(i), proxy_ports[i], n_accept_threads);
+    MakeL4RProxyAcceptor(L4RProxyAcceptors.at(i), proxy_ports[i], n_accept_threads);
   }
 }
 
@@ -317,7 +326,7 @@ init_accept_HttpProxyServer(int n_accept_threads)
  *  start_HttpProxyServer().
  */
 void
-init_HttpProxyServer(EThread *)
+init_L4RProxyServer(EThread *)
 {
   if (eventProcessor.thread_group[ET_NET]._started == num_of_net_threads) {
     std::unique_lock<std::mutex> lock(proxyServerMutex);
@@ -328,7 +337,7 @@ init_HttpProxyServer(EThread *)
 }
 
 void
-start_HttpProxyServer()
+start_L4RProxyServer()
 {
   static bool called_once           = false;
   HttpProxyPort::Group &proxy_ports = HttpProxyPort::global();
@@ -338,10 +347,10 @@ start_HttpProxyServer()
   ///////////////////////////////////
 
   ink_assert(!called_once);
-  ink_assert(proxy_ports.size() == HttpProxyAcceptors.size());
+  ink_assert(proxy_ports.size() == L4RProxyAcceptors.size());
 
   for (int i = 0, n = proxy_ports.size(); i < n; ++i) {
-    HttpProxyAcceptor &acceptor = HttpProxyAcceptors[i];
+    L4RProxyAcceptor &acceptor = L4RProxyAcceptors[i];
     HttpProxyPort &port         = proxy_ports[i];
     if (port.isSSL()) {
       if (nullptr == sslNetProcessor.main_accept(acceptor._accept, port.m_fd, acceptor._net_opt)) {
@@ -358,11 +367,12 @@ start_HttpProxyServer()
 
 #if TS_HAS_TESTS
   if (is_action_tag_set("http_update_test")) {
-    init_http_update_test();
+    //init_http_update_test();
   }
 #endif
 
   // Set up stat page for http connection count
+#if 0
   statPagesManager.register_http("connection_count", register_ShowConnectionCount);
 
   // Alert plugins that connections will be accepted.
@@ -371,27 +381,28 @@ start_HttpProxyServer()
     hook->invoke(TS_EVENT_LIFECYCLE_PORTS_READY, nullptr);
     hook = hook->next();
   }
+#endif
 }
 
 void
-start_HttpProxyServerBackDoor(int port, int accept_threads)
+start_L4RProxyServerBackDoor(int port, int accept_threads)
 {
   NetProcessor::AcceptOptions opt;
-  HttpSessionAccept::Options ha_opt;
+  //HttpSessionAccept::Options ha_opt;
 
   opt.local_port     = port;
   opt.accept_threads = accept_threads;
   opt.localhost_only = true;
-  ha_opt.backdoor    = true;
+  //ha_opt.backdoor    = true;
   opt.backdoor       = true;
 
   // The backdoor only binds the loopback interface
-  netProcessor.main_accept(new HttpSessionAccept(ha_opt), NO_FD, opt);
+  netProcessor.main_accept(new L4RSessionAccept(/*ha_opt*/), NO_FD, opt);
 }
 
 void
-stop_HttpProxyServer()
+stop_L4RProxyServer()
 {
-  sslNetProcessor.stop_accept();
-  netProcessor.stop_accept();
+  //sslNetProcessor.stop_accept();
+  //netProcessor.stop_accept();
 }

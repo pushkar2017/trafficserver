@@ -2065,6 +2065,7 @@ AC_CONFIG_FILES([
   proxy/http2/Makefile
   proxy/logging/Makefile
   proxy/shared/Makefile
+  proxy/l4r/Makefile
   rc/Makefile
   rc/trafficserver
   rc/trafficserver.conf

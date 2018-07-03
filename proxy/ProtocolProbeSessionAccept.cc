@@ -90,7 +90,11 @@ struct ProtocolProbeTrampoline : public Continuation, public ProtocolProbeSessio
       goto done;
     }
 
-    if (proto_is_http2(reader)) {
+    // Hardcode port 8000 to L4R
+    if (netvc->get_local_port() == 8000) {
+      key = PROTO_L4R;
+    }
+    else if (proto_is_http2(reader)) {
       key = PROTO_HTTP2;
     } else {
       key = PROTO_HTTP;
