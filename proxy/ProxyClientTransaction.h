@@ -468,7 +468,7 @@ public:
 
   virtual void transaction_done() = 0;
 
-  ProxyClientSession *
+  BasicProxyClientSession *
   get_parent()
   {
     return parent;
