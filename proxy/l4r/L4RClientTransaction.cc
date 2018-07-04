@@ -23,7 +23,7 @@
 
 #include "L4RClientTransaction.h"
 #include "Http1ClientSession.h"
-#include "HttpSM.h"
+#include "L4RSM.h"
 
 void
 L4RClientTransaction::release(IOBufferReader *r)

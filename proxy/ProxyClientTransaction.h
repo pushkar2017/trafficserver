@@ -475,7 +475,7 @@ public:
   }
 
   virtual void
-  set_parent(ProxyClientSession *new_parent)
+  set_parent(BasicProxyClientSession *new_parent)
   {
     parent         = new_parent;
     host_res_style = parent->host_res_style;

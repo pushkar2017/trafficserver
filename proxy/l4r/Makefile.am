@@ -43,6 +43,8 @@ libl4r_a_SOURCES = \
 	L4RClientTransaction.h \
 	L4RServerSession.cc \
 	L4RServerSession.h \
+	L4RSM.cc \
+	L4RSM.h \
 	L4RSessionAccept.cc \
 	L4RSessionAccept.h
 

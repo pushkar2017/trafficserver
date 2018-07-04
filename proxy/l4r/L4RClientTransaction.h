@@ -26,6 +26,7 @@
 #include "../ProxyClientTransaction.h"
 
 class Continuation;
+class L4RClientSession;
 
 class L4RClientTransaction : public BasicProxyClientTransaction
 {
@@ -89,7 +90,7 @@ public:
 
   bool allow_half_open() const override;
 
-  void set_parent(L4RClientSession *new_parent) override;
+  void set_parent(BasicProxyClientSession *new_parent);
 
   bool
   is_outbound_transparent() const override
