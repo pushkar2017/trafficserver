@@ -76,6 +76,7 @@ class HttpServerSession;
 class AuthHttpAdapter;
 
 class HttpSM;
+class L4rSM;
 typedef int (HttpSM::*HttpSMHandler)(int event, void *data);
 typedef int (L4rSM::*L4rSMHandler)(int event, void *data);
 
@@ -105,7 +106,6 @@ struct HttpVCTableEntry {
   VIO *read_vio;
   VIO *write_vio;
   HttpSMHandler vc_handler;
-  L4rSMHandler lvc_handler;
   HttpVC_t vc_type;
   bool eos;
   bool in_tunnel;
@@ -129,6 +129,45 @@ private:
 
 inline bool
 HttpVCTable::is_table_clear() const
+{
+  for (const auto &i : vc_table) {
+    if (i.vc != nullptr) {
+      return false;
+    }
+  }
+  return true;
+}
+
+struct L4rVCTableEntry {
+  VConnection *vc;
+  MIOBuffer *read_buffer;
+  MIOBuffer *write_buffer;
+  VIO *read_vio;
+  VIO *write_vio;
+  L4rSMHandler vc_handler;
+  HttpVC_t vc_type;
+  bool eos;
+  bool in_tunnel;
+};
+
+struct L4rVCTable {
+  static const int vc_table_max_entries = 4;
+  L4rVCTable();
+
+  L4rVCTableEntry *new_entry();
+  L4rVCTableEntry *find_entry(VConnection *);
+  L4rVCTableEntry *find_entry(VIO *);
+  void remove_entry(L4rVCTableEntry *);
+  void cleanup_entry(L4rVCTableEntry *);
+  void cleanup_all();
+  bool is_table_clear() const;
+
+private:
+  L4rVCTableEntry vc_table[vc_table_max_entries];
+};
+
+inline bool
+L4rVCTable::is_table_clear() const
 {
   for (const auto &i : vc_table) {
     if (i.vc != nullptr) {
@@ -222,7 +261,7 @@ public:
   virtual void destroy();
 
   static L4rSM *allocate();
-  HttpVCTableEntry *get_ua_entry(); // Added to get the ua_entry pointer  - YTS-TEAM
+  L4rVCTableEntry *get_ua_entry(); // Added to get the ua_entry pointer  - YTS-TEAM
 
   void init();
 
@@ -290,9 +329,9 @@ public:
 protected:
   int reentrancy_count = 0;
 
-  HttpVCTable vc_table;
+  L4rVCTable vc_table;
 
-  HttpVCTableEntry *ua_entry = nullptr;
+  L4rVCTableEntry *ua_entry = nullptr;
   void remove_ua_entry();
 
 public:
@@ -308,7 +347,7 @@ protected:
   IOBufferReader *ua_buffer_reader     = nullptr;
   IOBufferReader *ua_raw_buffer_reader = nullptr;
 
-  HttpVCTableEntry *server_entry    = nullptr;
+  L4rVCTableEntry *server_entry     = nullptr;
   HttpServerSession *server_session = nullptr;
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
@@ -325,7 +364,7 @@ protected:
   /// Need primarily for cleanup.
   bool has_active_plugin_agents = false;
 
-  HttpSMHandler default_handler = nullptr;
+  L4rSMHandler default_handler = nullptr;
   Action *pending_action        = nullptr;
   Continuation *schedule_cont   = nullptr;
 
@@ -333,6 +372,7 @@ protected:
 
   int main_handler(int event, void *data);
 
+  int state_read_client_request_header(int event, void *data);
   int state_watch_for_client_abort(int event, void *data);
   int state_srv_lookup(int event, void *data);
   int state_hostdb_lookup(int event, void *data);
@@ -365,9 +405,10 @@ protected:
   void set_ua_abort(HttpTransact::AbortState_t ua_abort, int event);
   void setup_server_send_request();
   void setup_server_send_request_api();
-  void setup_internal_transfer(HttpSMHandler handler);
+  void setup_internal_transfer(L4rSMHandler handler);
   void setup_error_transfer();
   void setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial = nullptr);
+  int state_send_server_request_header(int event, void *data);
 
   HttpTransact::StateMachineAction_t last_action     = HttpTransact::SM_ACTION_UNDEFINED;
   int (HttpSM::*m_last_state)(int event, void *data) = nullptr;
