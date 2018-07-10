@@ -77,6 +77,7 @@ class AuthHttpAdapter;
 
 class HttpSM;
 typedef int (HttpSM::*HttpSMHandler)(int event, void *data);
+typedef int (L4rSM::*L4rSMHandler)(int event, void *data);
 
 enum HttpVC_t {
   HTTP_UNKNOWN = 0,
@@ -104,6 +105,7 @@ struct HttpVCTableEntry {
   VIO *read_vio;
   VIO *write_vio;
   HttpSMHandler vc_handler;
+  L4rSMHandler lvc_handler;
   HttpVC_t vc_type;
   bool eos;
   bool in_tunnel;
@@ -446,7 +448,7 @@ protected:
   bool is_transparent_passthrough_allowed();
 
 public:
-  LINK(L4rSM, debug_link);
+  LINK(L4rSM, l4rdebug_link);
 
 public:
   bool set_server_session_private(bool private_session);

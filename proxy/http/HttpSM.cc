@@ -259,6 +259,12 @@ HttpVCTable::cleanup_all()
     default_handler = _h;                 \
   }
 
+#define L4R_SM_SET_DEFAULT_HANDLER(_h)   \
+  {                                       \
+    REMEMBER(NO_EVENT, reentrancy_count); \
+    default_handler = _h;                 \
+  }
+
 HttpSM::HttpSM() : Continuation(nullptr)
 {
   ink_zero(vc_table);
@@ -8095,7 +8101,7 @@ L4rSM::init()
   // Unique state machine identifier
   sm_id                    = next_l4rsm_id++;
   t_state.state_machine_id = sm_id;
-  t_state.state_machine    = this;
+  t_state.state_machine    = nullptr;
 
   t_state.http_config_param = HttpConfig::acquire();
 
@@ -8110,9 +8116,6 @@ L4rSM::init()
   // TODO: This probably doesn't honor this as a per-transaction overridable config.
   t_state.force_dns = (ip_rule_in_CacheControlTable() || t_state.parent_params->parent_table->ipMatch ||
                        !(t_state.txn_conf->doc_in_cache_skip_dns) || !(t_state.txn_conf->cache_http));
-
-  http_parser.m_allow_non_http = t_state.http_config_param->parser_allow_non_http;
-  http_parser_init(&http_parser);
 
   SET_HANDLER(&L4rSM::main_handler);
 
@@ -8283,10 +8286,9 @@ L4rSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader *
 
   // Setup for parsing the header
   ua_buffer_reader     = buffer_reader;
-  ua_entry->vc_handler = &L4rSM::state_read_client_request_header;
+  ua_entry->lvc_handler = &L4rSM::state_read_client_request_header;
   t_state.hdr_info.client_request.destroy();
   t_state.hdr_info.client_request.create(HTTP_TYPE_REQUEST);
-  http_parser_init(&http_parser);
 
   // Prepare raw reader which will live until we are sure this is HTTP indeed
 #if 0
@@ -8353,7 +8355,6 @@ L4rSM::state_watch_for_client_abort(int event, void *data)
       ua_buffer_reader = nullptr;
       vc_table.cleanup_entry(ua_entry);
       ua_entry = nullptr;
-      tunnel.kill_tunnel();
       terminate_sm = true; // Just die already, the requester is gone
     }
     break;
@@ -8361,23 +8362,6 @@ L4rSM::state_watch_for_client_abort(int event, void *data)
   case VC_EVENT_ERROR:
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_INACTIVITY_TIMEOUT: {
-    if (tunnel.is_tunnel_active()) {
-      // Check to see if the user agent is part of the tunnel.
-      //  If so forward the event to the tunnel.  Otherwise,
-      //  kill the tunnel and fallthrough to the case
-      //  where the tunnel is not active
-      HttpTunnelConsumer *c = tunnel.get_consumer(ua_txn);
-      if (c && c->alive) {
-        SMDebug("http",
-                "[%" PRId64 "] [watch_for_client_abort] "
-                "forwarding event %s to tunnel",
-                sm_id, HttpDebugNames::get_event_name(event));
-        tunnel.handleEvent(event, c->write_vio);
-        return 0;
-      } else {
-        tunnel.kill_tunnel();
-      }
-    }
     // Disable further I/O on the client
     if (ua_entry->read_vio) {
       ua_entry->read_vio->nbytes = ua_entry->read_vio->ndone;
@@ -8572,11 +8556,11 @@ plugins required to work with sni_routing.
           if (hs->port > 0) {
             t_state.hdr_info.client_request.url_get()->port_set(hs->port);
           } else {
-            t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
+            //t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
           }
         } else {
           t_state.hdr_info.client_request.url_get()->host_set(ssl_vc->serverName, strlen(ssl_vc->serverName));
-          t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
+          //t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
         }
       }
     }
@@ -8626,7 +8610,7 @@ plugins required to work with sni_routing.
 
           if (!plugin_lock) {
             api_timer = -Thread::get_hrtime_updated();
-            HTTP_SM_SET_DEFAULT_HANDLER(&L4rSM::state_api_callout);
+            L4R_SM_SET_DEFAULT_HANDLER(&L4rSM::state_api_callout);
             ink_assert(pending_action == nullptr);
             pending_action = mutex->thread_holding->schedule_in(this, HRTIME_MSECONDS(10));
             // Should @a callout_state be reset back to HTTP_API_NO_CALLOUT here? Because the default
@@ -8694,8 +8678,6 @@ plugins required to work with sni_routing.
     } else if (t_state.api_http_sm_shutdown) {
       t_state.api_http_sm_shutdown   = false;
       t_state.cache_info.object_read = nullptr;
-      cache_sm.close_read();
-      transform_cache_sm.close_read();
       release_server_session();
       terminate_sm                 = true;
       api_next                     = API_RETURN_SHUTDOWN;
@@ -8738,7 +8720,6 @@ plugins required to work with sni_routing.
   case API_RETURN_SHUTDOWN:
     break;
   case API_RETURN_INVALIDATE_ERROR:
-    do_cache_prepare_update();
     break;
   default:
   case API_RETURN_UNKNOWN:
@@ -8762,9 +8743,8 @@ L4rSM::handle_api_return()
   switch (t_state.api_next_action) {
   case HttpTransact::SM_ACTION_API_SM_START:
     if (t_state.client_info.port_attribute == HttpProxyPort::TRANSPORT_BLIND_TUNNEL) {
-      setup_blind_tunnel_port();
     } else {
-      setup_client_read_request_header();
+      //setup_client_read_request_header();
     }
     return;
 
@@ -8775,8 +8755,6 @@ L4rSM::handle_api_return()
       t_state.cache_info.object_read = nullptr;
       t_state.request_sent_time      = UNDEFINED_TIME;
       t_state.response_received_time = UNDEFINED_TIME;
-      cache_sm.close_read();
-      transform_cache_sm.close_read();
     }
     // fallthrough
 
@@ -8797,16 +8775,6 @@ L4rSM::handle_api_return()
       ua_txn->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_no_activity_timeout_in));
     }
 
-    // We only follow 3xx when redirect_in_process == false. Otherwise the redirection has already been launched (in
-    // SM_ACTION_SERVE_FROM_CACHE or SM_ACTION_SERVER_READ).redirect_in_process is set before this logic if we need more direction.
-    // This redirection is only used with the build_error_reponse. Then, the redirection_tries will be increased by
-    // state_read_server_reponse_header and never get into this logic again.
-    if (enable_redirection && !t_state.redirect_info.redirect_in_process && is_redirect_required() &&
-        (redirection_tries <= t_state.txn_conf->number_of_redirections)) {
-      do_redirect();
-    } else if (redirection_tries > t_state.txn_conf->number_of_redirections) {
-      t_state.squid_codes.subcode = SQUID_SUBCODE_NUM_REDIRECTIONS_EXCEEDED;
-    }
     // we have further processing to do
     //  based on what t_state.next_action is
     break;
@@ -8855,40 +8823,7 @@ L4rSM::handle_api_return()
 
       setup_blind_tunnel(true, initial_data);
     } else {
-      HttpTunnelProducer *p = setup_server_transfer();
-      perform_cache_write_action();
-      tunnel.tunnel_run(p);
     }
-    break;
-  }
-  case HttpTransact::SM_ACTION_SERVE_FROM_CACHE: {
-    HttpTunnelProducer *p = setup_cache_read_transfer();
-    tunnel.tunnel_run(p);
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_INTERNAL_CACHE_WRITE: {
-    if (cache_sm.cache_write_vc) {
-      setup_internal_transfer(&L4rSM::tunnel_handler_cache_fill);
-    } else {
-      setup_internal_transfer(&L4rSM::tunnel_handler);
-    }
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_INTERNAL_CACHE_NOOP:
-  case HttpTransact::SM_ACTION_INTERNAL_CACHE_DELETE:
-  case HttpTransact::SM_ACTION_INTERNAL_CACHE_UPDATE_HEADERS:
-  case HttpTransact::SM_ACTION_SEND_ERROR_CACHE_NOOP: {
-    setup_internal_transfer(&L4rSM::tunnel_handler);
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_REDIRECT_READ: {
-    // Clean up from any communication with previous servers
-    release_server_session();
-
-    call_transact_and_set_next_state(HttpTransact::HandleRequest);
     break;
   }
   case HttpTransact::SM_ACTION_SSL_TUNNEL: {
@@ -11452,63 +11387,6 @@ L4rSM::set_next_state()
 
     ink_assert(server_entry == nullptr);
     do_http_server_open(true);
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_CACHE_ISSUE_WRITE_TRANSFORM: {
-    ink_assert(t_state.cache_info.transform_action == HttpTransact::CACHE_PREPARE_TO_WRITE);
-
-    if (transform_cache_sm.cache_write_vc) {
-      // We've already got the write_vc that
-      //  didn't use for the untransformed copy
-      ink_assert(cache_sm.cache_write_vc == nullptr);
-      ink_assert(t_state.api_info.cache_untransformed == false);
-      t_state.cache_info.write_lock_state = HttpTransact::CACHE_WL_SUCCESS;
-      call_transact_and_set_next_state(nullptr);
-    } else {
-      HTTP_SM_SET_DEFAULT_HANDLER(&L4rSM::state_cache_open_write);
-
-      do_cache_prepare_write_transform();
-    }
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_TRANSFORM_READ: {
-    t_state.api_next_action = HttpTransact::SM_ACTION_API_SEND_RESPONSE_HDR;
-    do_api_callout();
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_READ_PUSH_HDR: {
-    setup_push_read_response_header();
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_STORE_PUSH_BODY: {
-    // This can return NULL - do we really want to run the tunnel in that case?
-    // But that's how it was before this change.
-    HttpTunnelProducer *p = setup_push_transfer_to_cache();
-    tunnel.tunnel_run(p);
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_CACHE_PREPARE_UPDATE: {
-    ink_assert(t_state.api_update_cached_object == HttpTransact::UPDATE_CACHED_OBJECT_CONTINUE);
-    do_cache_prepare_update();
-    break;
-  }
-  case HttpTransact::SM_ACTION_CACHE_ISSUE_UPDATE: {
-    if (t_state.api_update_cached_object == HttpTransact::UPDATE_CACHED_OBJECT_ERROR) {
-      t_state.cache_info.object_read = nullptr;
-      cache_sm.close_read();
-    }
-    issue_cache_update();
-    call_transact_and_set_next_state(nullptr);
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_WAIT_FOR_FULL_BODY: {
-    wait_for_full_body();
     break;
   }
 
