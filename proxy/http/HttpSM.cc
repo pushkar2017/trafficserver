@@ -237,6 +237,114 @@ HttpVCTable::cleanup_all()
   }
 }
 
+L4rVCTable::L4rVCTable()
+{
+  memset(&vc_table, 0, sizeof(vc_table));
+}
+
+L4rVCTableEntry *
+L4rVCTable::new_entry()
+{
+  for (int i = 0; i < vc_table_max_entries; i++) {
+    if (vc_table[i].vc == nullptr) {
+      return vc_table + i;
+    }
+  }
+
+  ink_release_assert(0);
+  return nullptr;
+}
+
+L4rVCTableEntry *
+L4rVCTable::find_entry(VConnection *vc)
+{
+  for (int i = 0; i < vc_table_max_entries; i++) {
+    if (vc_table[i].vc == vc) {
+      return vc_table + i;
+    }
+  }
+
+  return nullptr;
+}
+
+L4rVCTableEntry *
+L4rVCTable::find_entry(VIO *vio)
+{
+  for (int i = 0; i < vc_table_max_entries; i++) {
+    if (vc_table[i].read_vio == vio || vc_table[i].write_vio == vio) {
+      ink_assert(vc_table[i].vc != nullptr);
+      return vc_table + i;
+    }
+  }
+
+  return nullptr;
+}
+
+// bool L4rVCTable::remove_entry(HttpVCEntry* e)
+//
+//    Deallocates all buffers from the associated
+//      entry and re-initializes it's other fields
+//      for reuse
+//
+void
+L4rVCTable::remove_entry(L4rVCTableEntry *e)
+{
+  ink_assert(e->vc == nullptr || e->in_tunnel);
+  e->vc  = nullptr;
+  e->eos = false;
+  if (e->read_buffer) {
+    free_MIOBuffer(e->read_buffer);
+    e->read_buffer = nullptr;
+  }
+  if (e->write_buffer) {
+    free_MIOBuffer(e->write_buffer);
+    e->write_buffer = nullptr;
+  }
+  e->read_vio   = nullptr;
+  e->write_vio  = nullptr;
+  e->vc_handler = nullptr;
+  e->vc_type    = HTTP_UNKNOWN;
+  e->in_tunnel  = false;
+}
+
+// bool L4rVCTable::cleanup_entry(HttpVCEntry* e)
+//
+//    Closes the associate vc for the entry,
+//     and the call remove_entry
+//
+void
+L4rVCTable::cleanup_entry(L4rVCTableEntry *e)
+{
+  ink_assert(e->vc);
+  if (e->in_tunnel == false) {
+    // Update stats
+    switch (e->vc_type) {
+    case HTTP_UA_VC:
+      // proxy.process.http.current_client_transactions is decremented in HttpSM::destroy
+      break;
+    default:
+      // This covers:
+      // HTTP_UNKNOWN, HTTP_SERVER_VC, HTTP_TRANSFORM_VC, HTTP_CACHE_READ_VC,
+      // HTTP_CACHE_WRITE_VC, HTTP_RAW_SERVER_VC
+      break;
+    }
+
+    e->vc->do_io_close();
+    e->vc = nullptr;
+  }
+  remove_entry(e);
+}
+
+void
+L4rVCTable::cleanup_all()
+{
+  for (int i = 0; i < vc_table_max_entries; i++) {
+    if (vc_table[i].vc != nullptr) {
+      cleanup_entry(vc_table + i);
+    }
+  }
+}
+
 #define SMDebug(tag, ...) SpecificDebug(debug_on, tag, __VA_ARGS__)
 
 #define REMEMBER(e, r)                             \
@@ -8353,7 +8461,7 @@ L4rSM::state_read_client_request_header(int event, void *data)
 
   case VC_EVENT_EOS:
     ua_entry->eos = true;
-    if ((client_request_hdr_bytes > 0) && is_transparent_passthrough_allowed() && (ua_raw_buffer_reader != nullptr)) {
+    if ((client_request_hdr_bytes > 0) && /*is_transparent_passthrough_allowed() && */(ua_raw_buffer_reader != nullptr)) {
       break;
     }
   // Fall through
@@ -8393,7 +8501,7 @@ L4rSM::state_read_client_request_header(int event, void *data)
   // We need to handle EOS as well as READ_READY because the client
   // may have sent all of the data already followed by a fIN and that
   // should be OK.
-  if (is_transparent_passthrough_allowed() && ua_raw_buffer_reader != nullptr) {
+  if (/*is_transparent_passthrough_allowed() && */ua_raw_buffer_reader != nullptr) {
     bool do_blind_tunnel = false;
     // If we had a parse error and we're done reading data
     // blind tunnel
@@ -8952,7 +9060,7 @@ L4rSM::handle_api_return()
     call_transact_and_set_next_state(nullptr);
     return;
   case HttpTransact::SM_ACTION_API_SEND_REQUEST_HDR:
-    setup_server_send_request();
+    //setup_server_send_request();
     return;
   case HttpTransact::SM_ACTION_API_SEND_RESPONSE_HDR:
     // Set back the inactivity timeout
@@ -9000,13 +9108,13 @@ L4rSM::handle_api_return()
         }
       }
 
-      setup_blind_tunnel(true, initial_data);
+      //setup_blind_tunnel(true, initial_data);
     } else {
     }
     break;
   }
   case HttpTransact::SM_ACTION_SSL_TUNNEL: {
-    setup_blind_tunnel(true);
+    //setup_blind_tunnel(true);
     break;
   }
   default: {
@@ -9118,6 +9226,8 @@ L4rSM::state_send_server_request_header(int event, void *data)
   STATE_ENTER(&L4rSM::state_send_server_request_header, event);
   ink_assert(server_entry != nullptr);
   ink_assert(server_entry->write_vio == (VIO *)data || server_entry->read_vio == (VIO *)data);
+
+  int method;
 
   switch (event) {
   case VC_EVENT_WRITE_READY:
@@ -10420,7 +10530,7 @@ L4rSM::handle_http_server_open()
   //  // Start up read response in parallel in case of early error response
   //  setup_server_read_response_header();
   //} else {
-    setup_server_send_request_api();
+  //  setup_server_send_request_api();
   //}
 }
 
