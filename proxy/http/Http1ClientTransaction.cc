@@ -30,7 +30,7 @@ Http1ClientTransaction::release(IOBufferReader *r)
 {
   // Must set this inactivity count here rather than in the session because the state machine
   // is not availble then
-  MgmtInt ka_in = current_reader->t_state.txn_conf->keep_alive_no_activity_timeout_in;
+  MgmtInt ka_in = current_reader->get_state().txn_conf->keep_alive_no_activity_timeout_in;
   set_inactivity_timeout(HRTIME_SECONDS(ka_in));
 
   parent->clear_session_active();
@@ -71,5 +71,5 @@ Http1ClientTransaction::transaction_done()
 bool
 Http1ClientTransaction::allow_half_open() const
 {
-  return current_reader ? current_reader->t_state.txn_conf->allow_half_open > 0 : true;
+  return current_reader ? current_reader->get_state().txn_conf->allow_half_open > 0 : true;
 }

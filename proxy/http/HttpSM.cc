@@ -373,7 +373,7 @@ L4rVCTable::cleanup_all()
     default_handler = _h;                 \
   }
 
-HttpSM::HttpSM() : Continuation(nullptr)
+HttpSM::HttpSM() //: Continuation(nullptr)
 {
   ink_zero(vc_table);
   ink_zero(http_parser);
@@ -8172,7 +8172,7 @@ PostDataBuffers::~PostDataBuffers()
 
 
 // Layer 4 Routing State Machine
-L4rSM::L4rSM() : Continuation(nullptr)
+L4rSM::L4rSM() //: Continuation(nullptr)
 {
   ink_zero(vc_table);
 }

@@ -26,6 +26,7 @@
 #include "ProxyClientSession.h"
 #include <string_view>
 
+class BaseSM;
 class HttpSM;
 class HttpServerSession;
 class ProxyClientTransaction : public VConnection
@@ -229,7 +230,7 @@ public:
     return parent ? parent->get_server_session() : nullptr;
   }
 
-  HttpSM *
+  BaseSM *
   get_sm() const
   {
     return current_reader;
@@ -275,7 +276,7 @@ public:
 
 protected:
   ProxyClientSession *parent;
-  HttpSM *current_reader;
+  BaseSM *current_reader;
   IOBufferReader *sm_reader;
 
   /// DNS resolution preferences.

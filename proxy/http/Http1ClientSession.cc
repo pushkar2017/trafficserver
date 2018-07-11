@@ -244,7 +244,7 @@ Http1ClientSession::set_tcp_init_cwnd()
   if (!trans.get_sm()) {
     return;
   }
-  int desired_tcp_init_cwnd = trans.get_sm()->t_state.txn_conf->server_tcp_init_cwnd;
+  int desired_tcp_init_cwnd = trans.get_sm()->get_state().txn_conf->server_tcp_init_cwnd;
   HttpSsnDebug("desired TCP congestion window is %d", desired_tcp_init_cwnd);
   if (desired_tcp_init_cwnd == 0) {
     return;
@@ -304,7 +304,7 @@ Http1ClientSession::do_io_close(int alerrno)
       // Set the active timeout to the same as the inactive time so
       //   that this connection does not hang around forever if
       //   the ua hasn't closed
-      client_vc->set_active_timeout(HRTIME_SECONDS(trans.get_sm()->t_state.txn_conf->keep_alive_no_activity_timeout_in));
+      client_vc->set_active_timeout(HRTIME_SECONDS(trans.get_sm()->get_state().txn_conf->keep_alive_no_activity_timeout_in));
     }
 
     // [bug 2610799] Drain any data read.
@@ -529,7 +529,7 @@ Http1ClientSession::attach_server_session(HttpServerSession *ssession, bool tran
 
     if (transaction_done) {
       ssession->get_netvc()->set_inactivity_timeout(
-        HRTIME_SECONDS(trans.get_sm()->t_state.txn_conf->keep_alive_no_activity_timeout_out));
+        HRTIME_SECONDS(trans.get_sm()->get_state().txn_conf->keep_alive_no_activity_timeout_out));
       ssession->get_netvc()->cancel_active_timeout();
     } else {
       // we are serving from the cache - this could take a while.

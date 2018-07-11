@@ -250,7 +250,21 @@ public:
   ~PostDataBuffers();
 };
 
-class L4rSM : public Continuation
+class BaseSM : public Continuation
+{
+public:
+  BaseSM() : Continuation(nullptr) {}
+
+  virtual void init() = 0;
+  virtual void attach_client_session(ProxyClientTransaction *client_vc_arg, IOBufferReader *buffer_reader) = 0;
+  virtual HttpTransact::State & get_state() = 0;
+  virtual int64_t get_sm_id() = 0;
+  virtual void setPluginTag(const char *tag) = 0;
+  virtual void setPluginId(int64_t id) = 0;
+
+};
+
+class L4rSM : public BaseSM
 {
   friend class HttpPagesHandler;
   friend class CoreUtils;
@@ -266,6 +280,11 @@ public:
   void init();
 
   void attach_client_session(ProxyClientTransaction *client_vc_arg, IOBufferReader *buffer_reader);
+
+  virtual HttpTransact::State & get_state() { return t_state; }
+  virtual int64_t get_sm_id() { return sm_id; }
+  virtual void setPluginTag(const char *tag) { plugin_tag = tag; }
+  virtual void setPluginId(int64_t id) { plugin_id = id; }
 
   // Called by httpSessionManager so that we can reset
   //  the session timeouts and initiate a read while
@@ -516,7 +535,7 @@ private:
   int _client_connection_id = -1, _client_transaction_id = -1;
 };
 
-class HttpSM : public Continuation
+class HttpSM : public BaseSM
 {
   friend class HttpPagesHandler;
   friend class CoreUtils;
@@ -533,6 +552,11 @@ public:
   void init();
 
   void attach_client_session(ProxyClientTransaction *client_vc_arg, IOBufferReader *buffer_reader);
+
+  virtual HttpTransact::State & get_state() { return t_state; }
+  virtual int64_t get_sm_id() { return sm_id; }
+  virtual void setPluginTag(const char *tag) { plugin_tag = tag; }
+  virtual void setPluginId(int64_t id) { plugin_id = id; }
 
   // Called by httpSessionManager so that we can reset
   //  the session timeouts and initiate a read while

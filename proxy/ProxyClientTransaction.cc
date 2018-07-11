@@ -49,12 +49,12 @@ ProxyClientTransaction::new_transaction()
   current_reader = HttpSM::allocate();
   current_reader->init();
   HttpTxnDebug("[%" PRId64 "] Starting transaction %d using sm [%" PRId64 "]", parent->connection_id(),
-               parent->get_transact_count(), current_reader->sm_id);
+               parent->get_transact_count(), current_reader->get_sm_id());
 
   PluginIdentity *pi = dynamic_cast<PluginIdentity *>(this->get_netvc());
   if (pi) {
-    current_reader->plugin_tag = pi->getPluginTag();
-    current_reader->plugin_id  = pi->getPluginId();
+    current_reader->setPluginTag(pi->getPluginTag());
+    current_reader->setPluginId(pi->getPluginId());
   }
 
   current_reader->attach_client_session(this, sm_reader);
@@ -64,7 +64,7 @@ void
 ProxyClientTransaction::release(IOBufferReader *r)
 {
   HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", parent ? parent->connection_id() : 0,
-               current_reader ? current_reader->sm_id : 0);
+               current_reader ? current_reader->get_sm_id() : 0);
 
   // Pass along the release to the session
   if (parent) {
@@ -104,7 +104,7 @@ void
 ProxyClientTransaction::set_rx_error_code(ProxyError e)
 {
   if (this->current_reader) {
-    this->current_reader->t_state.client_info.rx_error_code = e;
+    this->current_reader->get_state().client_info.rx_error_code = e;
   }
 }
 
@@ -112,6 +112,6 @@ void
 ProxyClientTransaction::set_tx_error_code(ProxyError e)
 {
   if (this->current_reader) {
-    this->current_reader->t_state.client_info.tx_error_code = e;
+    this->current_reader->get_state().client_info.tx_error_code = e;
   }
 }
