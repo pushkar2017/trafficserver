@@ -46,7 +46,15 @@ ProxyClientTransaction::new_transaction()
   // connection re-use
 
   ink_release_assert(parent != nullptr);
-  current_reader = HttpSM::allocate();
+  if (get_netvc()->get_local_port() == 8000)
+  {
+    current_reader = L4rSM::allocate();
+  }
+  else
+  {
+    current_reader = HttpSM::allocate();
+  }
+
   current_reader->init();
   HttpTxnDebug("[%" PRId64 "] Starting transaction %d using sm [%" PRId64 "]", parent->connection_id(),
                parent->get_transact_count(), current_reader->get_sm_id());

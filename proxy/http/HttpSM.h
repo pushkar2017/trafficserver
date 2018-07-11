@@ -1091,3 +1091,27 @@ HttpSM::get_postbuf_clone_reader()
 {
   return this->_postbuf.get_post_data_buffer_clone_reader();
 }
+
+inline L4rSM *
+L4rSM::allocate()
+{
+  extern ClassAllocator<L4rSM> l4rSMAllocator;
+  return l4rSMAllocator.alloc();
+}
+
+inline void
+L4rSM::remove_ua_entry()
+{
+  vc_table.remove_entry(ua_entry);
+  ua_entry = nullptr;
+}
+
+inline void
+L4rSM::remove_server_entry()
+{
+  if (server_entry) {
+    vc_table.remove_entry(server_entry);
+    server_entry = nullptr;
+  }
+}
+
