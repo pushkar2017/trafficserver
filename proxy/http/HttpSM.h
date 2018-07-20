@@ -427,6 +427,7 @@ protected:
   void setup_internal_transfer(L4rSMHandler handler);
   void setup_error_transfer();
   void setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial = nullptr);
+  void setup_blind_tunnel_port();
   int state_send_server_request_header(int event, void *data);
 
   HttpTransact::StateMachineAction_t last_action     = HttpTransact::SM_ACTION_UNDEFINED;

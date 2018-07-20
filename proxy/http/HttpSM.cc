@@ -8209,7 +8209,8 @@ L4rSM::init()
   // Unique state machine identifier
   sm_id                    = next_l4rsm_id++;
   t_state.state_machine_id = sm_id;
-  t_state.state_machine    = nullptr;
+  // TODO: Fix this wrong type
+  t_state.state_machine    = reinterpret_cast<HttpSM *>(this);
 
   t_state.http_config_param = HttpConfig::acquire();
 
@@ -8271,10 +8272,10 @@ L4rSM::state_add_to_list(int event, void * /* data ATS_UNUSED */)
       HttpSMList[bucket].sm_list.push(this);
     }
   }
+#endif
 
   t_state.api_next_action = HttpTransact::SM_ACTION_API_SM_START;
   do_api_callout();
-#endif
   return EVENT_DONE;
 }
 
@@ -8429,6 +8430,46 @@ L4rSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader *
     --reentrancy_count;
     ink_assert(reentrancy_count >= 0);
   }
+}
+
+void
+L4rSM::setup_blind_tunnel_port()
+{
+  NetVConnection *netvc     = ua_txn->get_netvc();
+  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
+  int host_len;
+  if (ssl_vc && ssl_vc->GetSNIMapping()) {
+    if (!t_state.hdr_info.client_request.url_get()->host_get(&host_len)) {
+      // the URL object has not been created in the start of the transaction. Hence, we need to create the URL here
+      URL u;
+
+      t_state.hdr_info.client_request.create(HTTP_TYPE_REQUEST);
+      t_state.hdr_info.client_request.method_set(HTTP_METHOD_CONNECT, HTTP_LEN_CONNECT);
+      t_state.hdr_info.client_request.url_create(&u);
+      u.scheme_set(URL_SCHEME_TUNNEL, URL_LEN_TUNNEL);
+      t_state.hdr_info.client_request.url_set(&u);
+      auto *hs = TunnelMap.find(ssl_vc->serverName);
+      if (hs != nullptr) {
+        t_state.hdr_info.client_request.url_get()->host_set(hs->hostname, hs->len);
+        if (hs->port > 0) {
+          t_state.hdr_info.client_request.url_get()->port_set(hs->port);
+        } else {
+          t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
+        }
+      } else {
+        t_state.hdr_info.client_request.url_get()->host_set(ssl_vc->serverName, strlen(ssl_vc->serverName));
+        t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
+      }
+    }
+  } else {
+    char new_host[INET6_ADDRSTRLEN];
+    L4rSM *state_machine = reinterpret_cast<L4rSM *>(t_state.state_machine);
+    ats_ip_ntop(state_machine->ua_txn->get_netvc()->get_local_addr(), new_host, sizeof(new_host));
+
+    t_state.hdr_info.client_request.url_get()->host_set(new_host, strlen(new_host));
+    t_state.hdr_info.client_request.url_get()->port_set(state_machine->ua_txn->get_netvc()->get_local_port());
+  }
+  call_transact_and_set_next_state(HttpTransact::HandleBlindTunnel);
 }
 
 void
@@ -9048,10 +9089,7 @@ L4rSM::handle_api_return()
 {
   switch (t_state.api_next_action) {
   case HttpTransact::SM_ACTION_API_SM_START:
-    if (t_state.client_info.port_attribute == HttpProxyPort::TRANSPORT_BLIND_TUNNEL) {
-    } else {
-      //setup_client_read_request_header();
-    }
+    setup_blind_tunnel_port();
     return;
 
   case HttpTransact::SM_ACTION_API_READ_REQUEST_HDR:
