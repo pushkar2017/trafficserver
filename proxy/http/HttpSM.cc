@@ -8432,6 +8432,72 @@ L4rSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader *
   }
 }
 
+#if 0
+void
+L4rSM::setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial)
+{
+  HttpTunnelConsumer *c_ua;
+  HttpTunnelConsumer *c_os;
+  HttpTunnelProducer *p_ua;
+  HttpTunnelProducer *p_os;
+  MIOBuffer *from_ua_buf = new_MIOBuffer(BUFFER_SIZE_INDEX_32K);
+  MIOBuffer *to_ua_buf   = new_MIOBuffer(BUFFER_SIZE_INDEX_32K);
+  IOBufferReader *r_from = from_ua_buf->alloc_reader();
+  IOBufferReader *r_to   = to_ua_buf->alloc_reader();
+
+  milestones[TS_MILESTONE_SERVER_BEGIN_WRITE] = Thread::get_hrtime();
+  if (send_response_hdr) {
+    //client_response_hdr_bytes = write_response_header_into_buffer(&t_state.hdr_info.client_response, to_ua_buf);
+    if (initial && initial->read_avail()) {
+      int64_t avail = initial->read_avail();
+      to_ua_buf->write(initial, avail);
+      initial->consume(avail);
+    }
+  } else {
+    client_response_hdr_bytes = 0;
+  }
+
+  client_request_body_bytes = 0;
+  if (ua_raw_buffer_reader != nullptr) {
+    client_request_body_bytes += from_ua_buf->write(ua_raw_buffer_reader, client_request_hdr_bytes);
+    ua_raw_buffer_reader->dealloc();
+    ua_raw_buffer_reader = nullptr;
+  }
+
+  // Next order of business if copy the remaining data from the
+  //  header buffer into new buffer
+  client_request_body_bytes += from_ua_buf->write(ua_buffer_reader);
+
+  //HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::tunnel_handler);
+
+  p_os =
+    tunnel.add_producer(server_entry->vc, -1, r_to, &HttpSM::tunnel_handler_ssl_producer, HT_HTTP_SERVER, "http server - tunnel");
+
+  c_ua = tunnel.add_consumer(ua_entry->vc, server_entry->vc, &HttpSM::tunnel_handler_ssl_consumer, HT_HTTP_CLIENT,
+                             "user agent - tunnel");
+
+  p_ua = tunnel.add_producer(ua_entry->vc, -1, r_from, &HttpSM::tunnel_handler_ssl_producer, HT_HTTP_CLIENT, "user agent - tunnel");
+
+  c_os = tunnel.add_consumer(server_entry->vc, ua_entry->vc, &HttpSM::tunnel_handler_ssl_consumer, HT_HTTP_SERVER,
+                             "http server - tunnel");
+
+  // Make the tunnel aware that the entries are bi-directional
+  tunnel.chain(c_os, p_os);
+  tunnel.chain(c_ua, p_ua);
+
+  ua_entry->in_tunnel     = true;
+  server_entry->in_tunnel = true;
+
+  tunnel.tunnel_run();
+
+  // If we're half closed, we got a FIN from the client. Forward it on to the origin server
+  // now that we have the tunnel operational.
+  if (ua_txn && ua_txn->get_half_close_flag()) {
+    p_ua->vc->do_io_shutdown(IO_SHUTDOWN_READ);
+  }
+}
+#endif
+
 void
 L4rSM::setup_blind_tunnel_port()
 {
@@ -9084,12 +9150,43 @@ plugins required to work with sni_routing.
 //    return.  The way we are doing things also makes a
 //    mess of set_next_state()
 //
+
+void
+L4rSM::presetup_tunnel()
+{
+  // Reset the inactivity timeout if this is the first
+  //   time we've been called.  The timeout had been set to
+  //   the accept timeout by the ProxyClientTransaction
+  //
+  if ((ua_buffer_reader->read_avail() > 0) && (client_request_hdr_bytes == 0)) {
+    milestones[TS_MILESTONE_UA_FIRST_READ] = Thread::get_hrtime();
+    ua_txn->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_no_activity_timeout_in));
+  }
+
+  // Set the mode to tunnel so that we don't lookup the cache
+  t_state.current.mode = HttpTransact::TUNNELLING_PROXY;
+
+  t_state.cache_info.action = HttpTransact::CACHE_DO_NO_ACTION;
+  t_state.current.mode      = HttpTransact::GENERIC_PROXY;
+
+  t_state.transparent_passthrough = true;
+
+  NetVConnection *netvc = ua_txn->get_netvc();
+
+  // Turn off read eventing until we get the
+  // blind tunnel infrastructure set up
+  if (netvc) {
+    netvc->do_io_read(this, 0, nullptr);
+  }
+
+}
+
 void
 L4rSM::handle_api_return()
 {
   switch (t_state.api_next_action) {
   case HttpTransact::SM_ACTION_API_SM_START:
-    setup_blind_tunnel_port();
+    do_http_server_open(true);
     return;
 
   case HttpTransact::SM_ACTION_API_READ_REQUEST_HDR:
@@ -9934,6 +10031,10 @@ L4rSM::do_hostdb_update_if_necessary()
 void
 L4rSM::do_http_server_open(bool raw)
 {
+  // Hardcode for now
+  in_addr_t localhost = htonl(16777343);
+  ats_ip4_set(&(t_state.current.server->dst_addr.sa), localhost, 9001);
+
   int ip_family = t_state.current.server->dst_addr.sa.sa_family;
   auto fam_name = ats_ip_family_name(ip_family);
   SMDebug("http_track", "entered inside do_http_server_open ][%.*s]", static_cast<int>(fam_name.size()), fam_name.data());
@@ -9972,48 +10073,6 @@ L4rSM::do_http_server_open(bool raw)
     milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] = milestones[TS_MILESTONE_SERVER_CONNECT];
   }
 
-  // Check for remap rule. If so, only apply ip_allow filter if it is activated (ip_allow_check_enabled_p set).
-  // Otherwise, if no remap rule is defined, apply the ip_allow filter.
-  if (!t_state.url_remap_success || t_state.url_map.getMapping()->ip_allow_check_enabled_p) {
-    // Method allowed on dest IP address check
-    sockaddr *server_ip = &t_state.current.server->dst_addr.sa;
-    IpAllow::scoped_config ip_allow;
-
-    if (ip_allow) {
-      const AclRecord *acl_record = ip_allow->match(server_ip, IpAllow::DEST_ADDR);
-      bool deny_request           = false; // default is fail open.
-      int method                  = t_state.hdr_info.server_request.method_get_wksidx();
-
-      if (acl_record) {
-        // If empty, nothing is allowed, deny. Conversely if all methods are allowed it's OK, do not deny.
-        // Otherwise the method has to be checked specifically.
-        if (acl_record->isEmpty()) {
-          deny_request = true;
-        } else if (acl_record->_method_mask != AclRecord::ALL_METHOD_MASK) {
-          if (method != -1) {
-            deny_request = !acl_record->isMethodAllowed(method);
-          } else {
-            int method_str_len;
-            const char *method_str = t_state.hdr_info.server_request.method_get(&method_str_len);
-            deny_request           = !acl_record->isNonstandardMethodAllowed(std::string(method_str, method_str_len));
-          }
-        }
-      }
-
-      if (deny_request) {
-        if (is_debug_tag_set("ip-allow")) {
-          ip_text_buffer ipb;
-          Warning("server '%s' prohibited by ip-allow policy", ats_ip_ntop(server_ip, ipb, sizeof(ipb)));
-          Debug("ip-allow", "Denial on %s:%s with mask %x", ats_ip_ntop(&t_state.current.server->dst_addr.sa, ipb, sizeof(ipb)),
-                hdrtoken_index_to_wks(method), acl_record ? acl_record->_method_mask : 0x0);
-        }
-        t_state.current.attempts = t_state.txn_conf->connect_attempts_max_retries; // prevent any more retries with this IP
-        call_transact_and_set_next_state(HttpTransact::Forbidden);
-        return;
-      }
-    }
-  }
-
   // If this is not a raw connection, we try to get a session from the
   //  shared session pool.  Raw connections are for SSLs tunnel and
   //  require a new connection
@@ -10031,162 +10090,10 @@ L4rSM::do_http_server_open(bool raw)
   // know that the session will be private. This is overridable meaning that if a plugin later decides
   // it shouldn't be private it can still be returned to a shared pool.
   //
-  if (t_state.txn_conf->auth_server_session_private == 1 &&
-      t_state.hdr_info.server_request.presence(MIME_PRESENCE_AUTHORIZATION | MIME_PRESENCE_PROXY_AUTHORIZATION |
-                                               MIME_PRESENCE_WWW_AUTHENTICATE)) {
-    SMDebug("http_ss_auth", "Setting server session to private for authorization header");
-    will_be_private_ss = true;
-  }
-
-  if (t_state.method == HTTP_WKSIDX_POST || t_state.method == HTTP_WKSIDX_PUT) {
-    // don't share the session if keep-alive for post is not on
-    if (t_state.txn_conf->keep_alive_post_out == 0) {
-      SMDebug("http_ss", "Setting server session to private because of keep-alive post out");
-      will_be_private_ss = true;
-    }
-  }
 
   // If there is already an attached server session mark it as private.
   if (server_session != nullptr && will_be_private_ss) {
     set_server_session_private(true);
-  }
-
-  // I don't think we can use session sharing
-#if 0
-  if (raw == false && TS_SERVER_SESSION_SHARING_MATCH_NONE != t_state.txn_conf->server_session_sharing_match &&
-      (t_state.txn_conf->keep_alive_post_out == 1 || t_state.hdr_info.request_content_length == 0) && !is_private() &&
-      ua_txn != nullptr) {
-    HSMresult_t shared_result;
-    shared_result = httpSessionManager.acquire_session(this,                                 // state machine
-                                                       &t_state.current.server->dst_addr.sa, // ip + port
-                                                       t_state.current.server->name,         // hostname
-                                                       ua_txn,                               // has ptr to bound ua sessions
-                                                       this                                  // sm
-    );
-
-    switch (shared_result) {
-    case HSM_DONE:
-      hsm_release_assert(server_session != nullptr);
-      handle_http_server_open();
-      return;
-    case HSM_NOT_FOUND:
-      hsm_release_assert(server_session == nullptr);
-      break;
-    case HSM_RETRY:
-      //  Could not get shared pool lock
-      //   FIX: should retry lock
-      break;
-    default:
-      hsm_release_assert(0);
-    }
-  }
-#endif
-  // Avoid a problem where server session sharing is disabled and we have keep-alive, we are trying to open a new server
-  // session when we already have an attached server session.
-  //else if ((TS_SERVER_SESSION_SHARING_MATCH_NONE == t_state.txn_conf->server_session_sharing_match || is_private()) &&
-  if ((TS_SERVER_SESSION_SHARING_MATCH_NONE == t_state.txn_conf->server_session_sharing_match || is_private()) &&
-           (ua_txn != nullptr)) {
-    HttpServerSession *existing_ss = ua_txn->get_server_session();
-
-    if (existing_ss) {
-      // [amc] Not sure if this is the best option, but we don't get here unless session sharing is disabled
-      // so there's no point in further checking on the match or pool values. But why check anything? The
-      // client has already exchanged a request with this specific origin server and has sent another one
-      // shouldn't we just automatically keep the association?
-      if (ats_ip_addr_port_eq(&existing_ss->get_server_ip().sa, &t_state.current.server->dst_addr.sa)) {
-        ua_txn->attach_server_session(nullptr);
-        existing_ss->state = HSS_ACTIVE;
-        this->attach_server_session(existing_ss);
-        hsm_release_assert(server_session != nullptr);
-        handle_http_server_open();
-        return;
-      } else {
-        // As this is in the non-sharing configuration, we want to close
-        // the existing connection and call connect_re to get a new one
-        existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-        existing_ss->release();
-        ua_txn->attach_server_session(nullptr);
-      }
-    }
-  }
-  // Otherwise, we release the existing connection and call connect_re
-  // to get a new one.
-  // ua_txn is null when t_state.req_flavor == REQ_FLAVOR_SCHEDULED_UPDATE
-  else if (ua_txn != nullptr) {
-    HttpServerSession *existing_ss = ua_txn->get_server_session();
-    if (existing_ss) {
-      existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-      existing_ss->release();
-      ua_txn->attach_server_session(nullptr);
-    }
-  }
-  // Check to see if we have reached the max number of connections.
-  // Atomically read the current number of connections and check to see
-  // if we have gone above the max allowed.
-  if (t_state.http_config_param->server_max_connections > 0) {
-    int64_t sum;
-
-    HTTP_READ_GLOBAL_DYN_SUM(http_current_server_connections_stat, sum);
-
-    // Note that there is a potential race condition here where
-    // the value of the http_current_server_connections_stat gets changed
-    // between the statement above and the check below.
-    // If this happens, we might go over the max by 1 but this is ok.
-    if (sum >= t_state.http_config_param->server_max_connections) {
-      httpSessionManager.purge_keepalives();
-      // Eventually may want to have a queue as the origin_max_connection does to allow for a combination
-      // of retries and errors.  But at this point, we are just going to allow the error case.
-      t_state.current.state = HttpTransact::CONNECTION_ERROR;
-      call_transact_and_set_next_state(HttpTransact::HandleResponse);
-      return;
-    }
-  }
-  // Check to see if we have reached the max number of connections on this
-  // host.
-  if (t_state.txn_conf->origin_max_connections > 0) {
-    ConnectionCount *connections = ConnectionCount::getInstance();
-
-    CryptoHash hostname_hash;
-    CryptoContext().hash_immediate(hostname_hash, static_cast<const void *>(t_state.current.server->name),
-                                   static_cast<int>(strlen(t_state.current.server->name)));
-
-    auto ccount = connections->getCount(t_state.current.server->dst_addr, hostname_hash,
-                                        (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match);
-    if (ccount >= t_state.txn_conf->origin_max_connections) {
-      ip_port_text_buffer addrbuf;
-      ats_ip_nptop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf));
-      SMDebug("http", "[%" PRId64 "] too many connections (%d) for this host (%" PRId64 "): %s", sm_id, ccount,
-              t_state.txn_conf->origin_max_connections, addrbuf);
-      Warning("[%" PRId64 "] too many connections (%d) for this host (%" PRId64 "): %s", sm_id, ccount,
-              t_state.txn_conf->origin_max_connections, addrbuf);
-      ink_assert(pending_action == nullptr);
-
-      // if we were previously queued, or the queue is disabled-- just reschedule
-      if (t_state.origin_request_queued || t_state.txn_conf->origin_max_connections_queue < 0) {
-        pending_action = eventProcessor.schedule_in(this, HRTIME_MSECONDS(100));
-        return;
-      } else if (t_state.txn_conf->origin_max_connections_queue > 0) { // If we have a queue, lets see if there is a slot
-        ConnectionCountQueue *waiting_connections = ConnectionCountQueue::getInstance();
-        // if there is space in the queue
-        if (waiting_connections->getCount(t_state.current.server->dst_addr, hostname_hash,
-                                          (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match) <
-            t_state.txn_conf->origin_max_connections_queue) {
-          t_state.origin_request_queued = true;
-          Debug("http", "[%" PRId64 "] queued for this host: %s", sm_id,
-                ats_ip_ntop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
-          waiting_connections->incrementCount(t_state.current.server->dst_addr, hostname_hash,
-                                              (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match, 1);
-          pending_action = eventProcessor.schedule_in(this, HRTIME_MSECONDS(100));
-        } else { // the queue is full
-          HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
-          //send_origin_throttled_response();
-        }
-      } else { // the queue is set to 0
-        HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
-        //send_origin_throttled_response();
-      }
-      return;
-    }
   }
 
   // We did not manage to get an existing session
@@ -10224,61 +10131,12 @@ L4rSM::do_http_server_open(bool raw)
     }
   }
 
-  int scheme_to_use = t_state.scheme; // get initial scheme
-
-  if (!t_state.is_websocket) { // if not websocket, then get scheme from server request
-    int new_scheme_to_use = t_state.hdr_info.server_request.url_get()->scheme_get_wksidx();
-    // if the server_request url scheme was never set, try the client_request
-    if (new_scheme_to_use < 0) {
-      new_scheme_to_use = t_state.hdr_info.client_request.url_get()->scheme_get_wksidx();
-    }
-    if (new_scheme_to_use >= 0) { // found a new scheme, use it
-      scheme_to_use = new_scheme_to_use;
-    }
-  }
-
-  // draft-stenberg-httpbis-tcp recommends only enabling TFO on indempotent methods or
-  // those with intervening protocol layers (eg. TLS).
-
-  if (scheme_to_use == URL_WKSIDX_HTTPS || HttpTransactHeaders::is_method_idempotent(t_state.method)) {
-    opt.f_tcp_fastopen = (t_state.txn_conf->sock_option_flag_out & NetVCOptions::SOCK_OPT_TCP_FAST_OPEN);
-  }
-
-  if (scheme_to_use == URL_WKSIDX_HTTPS) {
-    SMDebug("http", "calling sslNetProcessor.connect_re");
-
-    int len          = 0;
-    const char *host = t_state.hdr_info.server_request.host_get(&len);
-    if (host && len > 0) {
-      opt.set_sni_servername(host, len);
-    }
-
-    SSLConfig::scoped_config params;
-    // check if the overridden client cert filename is already attached to an existing ssl context
-    if (t_state.txn_conf->client_cert_filepath && t_state.txn_conf->client_cert_filename) {
-      ats_scoped_str clientCert(
-        Layout::relative_to(t_state.txn_conf->client_cert_filepath, t_state.txn_conf->client_cert_filename));
-      if (clientCert != nullptr) {
-        auto tCTX = params->getCTX(clientCert);
-
-        if (tCTX == nullptr) {
-          // make new client ctx and add it to the ctx list
-          Debug("ssl", "adding new cert for client cert %s", (char *)clientCert);
-          auto tctx = params->getNewCTX(clientCert);
-          params->InsertCTX(clientCert, tctx);
-        }
-        opt.set_client_certname(clientCert);
-      }
-    }
-    connect_action_handle = sslNetProcessor.connect_re(this,                                 // state machine
-                                                       &t_state.current.server->dst_addr.sa, // addr + port
-                                                       &opt);
-  } else if (t_state.method != HTTP_WKSIDX_CONNECT && t_state.method != HTTP_WKSIDX_POST && t_state.method != HTTP_WKSIDX_PUT) {
-    SMDebug("http", "calling netProcessor.connect_re");
-    connect_action_handle = netProcessor.connect_re(this,                                 // state machine
-                                                    &t_state.current.server->dst_addr.sa, // addr + port
-                                                    &opt);
-  } else {
+  // We will try this later if connect_s doesn't work
+  //SMDebug("http", "calling netProcessor.connect_re");
+  //connect_action_handle = netProcessor.connect_re(this,                                 // state machine
+  //                                                &t_state.current.server->dst_addr.sa, // addr + port
+  //                                                &opt);
+  {
     // The request transform would be applied to POST and/or PUT request.
     // The server_vc should be established (writeable) before request transform start.
     // The CheckConnect is created by connect_s,
@@ -10291,13 +10149,7 @@ L4rSM::do_http_server_open(bool raw)
     // Set the inactivity timeout to the connect timeout so that we
     // we fail this server if it doesn't start sending the response
     // header
-    if (t_state.method == HTTP_WKSIDX_POST || t_state.method == HTTP_WKSIDX_PUT) {
-      connect_timeout = t_state.txn_conf->post_connect_attempts_timeout;
-    } else if (t_state.current.server == &t_state.parent_info) {
-      connect_timeout = t_state.txn_conf->parent_connect_timeout;
-    } else {
-      connect_timeout = t_state.txn_conf->connect_attempts_timeout;
-    }
+    connect_timeout = t_state.txn_conf->connect_attempts_timeout;
 
     SMDebug("http", "calling netProcessor.connect_s");
     connect_action_handle = netProcessor.connect_s(this,                                 // state machine

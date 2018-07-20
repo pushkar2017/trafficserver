@@ -348,6 +348,8 @@ public:
 protected:
   int reentrancy_count = 0;
 
+  HttpTunnel tunnel;
+
   L4rVCTable vc_table;
 
   L4rVCTableEntry *ua_entry = nullptr;
@@ -374,7 +376,7 @@ protected:
    * So we use this variable to indicate that
    * we should create a new connection and then once we attach the session we'll mark it as private.
    */
-  bool will_be_private_ss              = false;
+  bool will_be_private_ss              = true;
   int shared_session_retries           = 0;
   IOBufferReader *server_buffer_reader = nullptr;
   void remove_server_entry();
@@ -426,6 +428,7 @@ protected:
   void setup_server_send_request_api();
   void setup_internal_transfer(L4rSMHandler handler);
   void setup_error_transfer();
+  void presetup_tunnel();
   void setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial = nullptr);
   void setup_blind_tunnel_port();
   int state_send_server_request_header(int event, void *data);
