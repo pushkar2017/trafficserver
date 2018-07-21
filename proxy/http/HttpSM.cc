@@ -8432,10 +8432,10 @@ L4rSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader *
   }
 }
 
-#if 0
 void
 L4rSM::setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial)
 {
+#if 0
   HttpTunnelConsumer *c_ua;
   HttpTunnelConsumer *c_os;
   HttpTunnelProducer *p_ua;
@@ -8495,8 +8495,8 @@ L4rSM::setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial)
   if (ua_txn && ua_txn->get_half_close_flag()) {
     p_ua->vc->do_io_shutdown(IO_SHUTDOWN_READ);
   }
-}
 #endif
+}
 
 void
 L4rSM::setup_blind_tunnel_port()
@@ -9186,6 +9186,7 @@ L4rSM::handle_api_return()
 {
   switch (t_state.api_next_action) {
   case HttpTransact::SM_ACTION_API_SM_START:
+    HTTP_SM_SET_DEFAULT_HANDLER(&L4rSM::state_raw_http_server_open);
     do_http_server_open(true);
     return;
 
@@ -9220,36 +9221,13 @@ L4rSM::handle_api_return()
       // We've successfully handled the upgrade, let's now setup
       // a blind tunnel.
       IOBufferReader *initial_data = nullptr;
-      if (t_state.is_websocket) {
-        HTTP_INCREMENT_DYN_STAT(http_websocket_current_active_client_connections_stat);
-        if (server_session) {
-          initial_data = server_session->get_reader();
-        }
-
-        if (ua_txn) {
-          SMDebug("http_websocket",
-                  "(client session) Setting websocket active timeout=%" PRId64 "s and inactive timeout=%" PRId64 "s",
-                  t_state.txn_conf->websocket_active_timeout, t_state.txn_conf->websocket_inactive_timeout);
-          ua_txn->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_active_timeout));
-          ua_txn->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_inactive_timeout));
-        }
-
-        if (server_session) {
-          SMDebug("http_websocket",
-                  "(server session) Setting websocket active timeout=%" PRId64 "s and inactive timeout=%" PRId64 "s",
-                  t_state.txn_conf->websocket_active_timeout, t_state.txn_conf->websocket_inactive_timeout);
-          server_session->get_netvc()->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_active_timeout));
-          server_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_inactive_timeout));
-        }
-      }
-
-      //setup_blind_tunnel(true, initial_data);
+      setup_blind_tunnel(true, initial_data);
     } else {
     }
     break;
   }
   case HttpTransact::SM_ACTION_SSL_TUNNEL: {
-    //setup_blind_tunnel(true);
+    setup_blind_tunnel(true);
     break;
   }
   default: {
@@ -10032,8 +10010,10 @@ void
 L4rSM::do_http_server_open(bool raw)
 {
   // Hardcode for now
-  in_addr_t localhost = htonl(16777343);
-  ats_ip4_set(&(t_state.current.server->dst_addr.sa), localhost, 9001);
+  // Why is server still nullptr, figure this out
+  t_state.current.server = new HttpTransact::ConnectionAttributes;
+  in_addr_t localhost = 16777343;
+  ats_ip4_set(&(t_state.current.server->dst_addr.sa), localhost, htons(9001));
 
   int ip_family = t_state.current.server->dst_addr.sa.sa_family;
   auto fam_name = ats_ip_family_name(ip_family);
