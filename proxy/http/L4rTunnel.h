@@ -192,7 +192,6 @@ public:
     return active;
   }
   bool is_tunnel_alive() const;
-  bool has_cache_writer() const;
 
   L4rTunnelProducer *add_producer(VConnection *vc, int64_t nbytes, IOBufferReader *reader_start, L4rProducerHandler sm_handler,
                                    L4rTunnelType_t vc_type, const char *name);
@@ -391,12 +390,6 @@ L4rTunnel::append_message_to_producer_buffer(L4rTunnelProducer *p, const char *m
   p->read_buffer->write(msg, msg_len);
   p->nbytes += msg_len;
   p->bytes_read += msg_len;
-}
-
-inline bool
-L4rTunnel::has_cache_writer() const
-{
-  return false;
 }
 
 inline bool

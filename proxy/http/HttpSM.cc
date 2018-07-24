@@ -8324,6 +8324,7 @@ L4rSM::kill_this_async_hook(int /* event ATS_UNUSED */, void * /* data ATS_UNUSE
 void
 L4rSM::start_sub_sm()
 {
+  tunnel.init(this, mutex);
 }
 
 void
