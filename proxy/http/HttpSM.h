@@ -38,6 +38,7 @@
 #include "HttpTransact.h"
 #include "UrlRewrite.h"
 #include "HttpTunnel.h"
+#include "L4rTunnel.h"
 #include "InkAPIInternal.h"
 #include "../ProxyClientTransaction.h"
 #include "HdrUtils.h"
@@ -348,7 +349,7 @@ public:
 protected:
   int reentrancy_count = 0;
 
-  HttpTunnel tunnel;
+  L4rTunnel tunnel;
 
   L4rVCTable vc_table;
 
@@ -432,6 +433,10 @@ protected:
   void setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial = nullptr);
   void setup_blind_tunnel_port();
   int state_send_server_request_header(int event, void *data);
+
+  int tunnel_handler_ssl_consumer(int event, L4rTunnelConsumer *c);
+  int tunnel_handler_ssl_producer(int event, L4rTunnelProducer *p);
+  int tunnel_handler(int event, void *data);
 
   HttpTransact::StateMachineAction_t last_action     = HttpTransact::SM_ACTION_UNDEFINED;
   int (HttpSM::*m_last_state)(int event, void *data) = nullptr;

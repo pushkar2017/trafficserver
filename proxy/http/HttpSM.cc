@@ -8435,11 +8435,10 @@ L4rSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader *
 void
 L4rSM::setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial)
 {
-#if 0
-  HttpTunnelConsumer *c_ua;
-  HttpTunnelConsumer *c_os;
-  HttpTunnelProducer *p_ua;
-  HttpTunnelProducer *p_os;
+  L4rTunnelConsumer *c_ua;
+  L4rTunnelConsumer *c_os;
+  L4rTunnelProducer *p_ua;
+  L4rTunnelProducer *p_os;
   MIOBuffer *from_ua_buf = new_MIOBuffer(BUFFER_SIZE_INDEX_32K);
   MIOBuffer *to_ua_buf   = new_MIOBuffer(BUFFER_SIZE_INDEX_32K);
   IOBufferReader *r_from = from_ua_buf->alloc_reader();
@@ -8468,17 +8467,17 @@ L4rSM::setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial)
   //  header buffer into new buffer
   client_request_body_bytes += from_ua_buf->write(ua_buffer_reader);
 
-  //HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::tunnel_handler);
+  L4R_SM_SET_DEFAULT_HANDLER(&L4rSM::tunnel_handler);
 
   p_os =
-    tunnel.add_producer(server_entry->vc, -1, r_to, &HttpSM::tunnel_handler_ssl_producer, HT_HTTP_SERVER, "http server - tunnel");
+    tunnel.add_producer(server_entry->vc, -1, r_to, &L4rSM::tunnel_handler_ssl_producer, L4R_SERVER, "http server - tunnel");
 
-  c_ua = tunnel.add_consumer(ua_entry->vc, server_entry->vc, &HttpSM::tunnel_handler_ssl_consumer, HT_HTTP_CLIENT,
+  c_ua = tunnel.add_consumer(ua_entry->vc, server_entry->vc, &L4rSM::tunnel_handler_ssl_consumer, L4R_CLIENT,
                              "user agent - tunnel");
 
-  p_ua = tunnel.add_producer(ua_entry->vc, -1, r_from, &HttpSM::tunnel_handler_ssl_producer, HT_HTTP_CLIENT, "user agent - tunnel");
+  p_ua = tunnel.add_producer(ua_entry->vc, -1, r_from, &L4rSM::tunnel_handler_ssl_producer, L4R_CLIENT, "user agent - tunnel");
 
-  c_os = tunnel.add_consumer(server_entry->vc, ua_entry->vc, &HttpSM::tunnel_handler_ssl_consumer, HT_HTTP_SERVER,
+  c_os = tunnel.add_consumer(server_entry->vc, ua_entry->vc, &L4rSM::tunnel_handler_ssl_consumer, L4R_SERVER,
                              "http server - tunnel");
 
   // Make the tunnel aware that the entries are bi-directional
@@ -8495,7 +8494,6 @@ L4rSM::setup_blind_tunnel(bool send_response_hdr, IOBufferReader *initial)
   if (ua_txn && ua_txn->get_half_close_flag()) {
     p_ua->vc->do_io_shutdown(IO_SHUTDOWN_READ);
   }
-#endif
 }
 
 void
@@ -9340,8 +9338,6 @@ L4rSM::state_send_server_request_header(int event, void *data)
   ink_assert(server_entry != nullptr);
   ink_assert(server_entry->write_vio == (VIO *)data || server_entry->read_vio == (VIO *)data);
 
-  int method;
-
   switch (event) {
   case VC_EVENT_WRITE_READY:
     server_entry->write_vio->reenable();
@@ -9352,7 +9348,6 @@ L4rSM::state_send_server_request_header(int event, void *data)
     //  our buffer and then decide what to do next
     free_MIOBuffer(server_entry->write_buffer);
     server_entry->write_buffer = nullptr;
-    method                     = t_state.hdr_info.server_request.method_get_wksidx();
     {
       // It's time to start reading the response
       //setup_server_read_response_header();
@@ -11579,5 +11574,147 @@ L4rSM::find_proto_string(HTTPVersion version) const
     return IP_PROTO_TAG_HTTP_0_9;
   }
   return {};
+}
+
+int
+L4rSM::tunnel_handler_ssl_producer(int event, L4rTunnelProducer *p)
+{
+  STATE_ENTER(&L4rSM::tunnel_handler_ssl_producer, event);
+
+  switch (event) {
+  case VC_EVENT_EOS:
+    // The write side of this connection is still alive
+    //  so half-close the read
+    if (p->self_consumer->alive) {
+      p->vc->do_io_shutdown(IO_SHUTDOWN_READ);
+      tunnel.local_finish_all(p);
+      break;
+    }
+  // FALL THROUGH - both sides of the tunnel are dea
+  case VC_EVENT_ERROR:
+  case VC_EVENT_INACTIVITY_TIMEOUT:
+  case VC_EVENT_ACTIVE_TIMEOUT:
+    // The other side of the connection is either already dead
+    //   or rendered inoperative by the error on the connection
+    //   Note: use tunnel close vc so the tunnel knows we are
+    //    nuking the of the connection as well
+    tunnel.close_vc(p);
+    tunnel.local_finish_all(p);
+
+    // Because we've closed the net vc this error came in, it's write
+    //  direction is now dead as well.  If that side still being fed data,
+    //  we need to kill that pipe as well
+    if (p->self_consumer->producer->alive) {
+      p->self_consumer->producer->alive = false;
+      if (p->self_consumer->producer->self_consumer->alive) {
+        p->self_consumer->producer->vc->do_io_shutdown(IO_SHUTDOWN_READ);
+      } else {
+        tunnel.close_vc(p->self_consumer->producer);
+      }
+    }
+    break;
+  case VC_EVENT_READ_COMPLETE:
+  case HTTP_TUNNEL_EVENT_PRECOMPLETE:
+  // We should never get these event since we don't know
+  //  how long the stream is
+  default:
+    ink_release_assert(0);
+  }
+
+  // Update stats
+  switch (p->vc_type) {
+  case HT_HTTP_SERVER:
+    server_response_body_bytes += p->bytes_read;
+    break;
+  case HT_HTTP_CLIENT:
+    client_request_body_bytes += p->bytes_read;
+    break;
+  default:
+    // Covered here:
+    // HT_CACHE_READ, HT_CACHE_WRITE,
+    // HT_TRANSFORM, HT_STATIC.
+    break;
+  }
+
+  return 0;
+}
+
+int
+L4rSM::tunnel_handler_ssl_consumer(int event, L4rTunnelConsumer *c)
+{
+  STATE_ENTER(&L4rSM::tunnel_handler_ssl_consumer, event);
+
+  switch (event) {
+  case VC_EVENT_ERROR:
+  case VC_EVENT_EOS:
+  case VC_EVENT_INACTIVITY_TIMEOUT:
+  case VC_EVENT_ACTIVE_TIMEOUT:
+    // we need to mark the producer dead
+    // otherwise it can stay alive forever.
+    if (c->producer->alive) {
+      c->producer->alive = false;
+      if (c->producer->self_consumer->alive) {
+        c->producer->vc->do_io_shutdown(IO_SHUTDOWN_READ);
+      } else {
+        tunnel.close_vc(c->producer);
+      }
+    }
+    // Since we are changing the state of the self_producer
+    //  we must have the tunnel shutdown the vc
+    tunnel.close_vc(c);
+    tunnel.local_finish_all(c->self_producer);
+    break;
+
+  case VC_EVENT_WRITE_COMPLETE:
+    // If we get this event, it means that the producer
+    //  has finished and we wrote the remaining data
+    //  to the consumer
+    //
+    // If the read side of this connection has not yet
+    //  closed, do a write half-close and then wait for
+    //  read side to close so that we don't cut off
+    //  pipelined responses with TCP resets
+    //
+    // ink_assert(c->producer->alive == false);
+    c->write_success = true;
+    if (c->self_producer->alive == true) {
+      c->vc->do_io_shutdown(IO_SHUTDOWN_WRITE);
+    } else {
+      c->vc->do_io_close();
+    }
+    break;
+
+  default:
+    ink_release_assert(0);
+  }
+
+  // Update stats
+  switch (c->vc_type) {
+  case HT_HTTP_SERVER:
+    server_request_body_bytes += c->bytes_written;
+    break;
+  case HT_HTTP_CLIENT:
+    client_response_body_bytes += c->bytes_written;
+    break;
+  default:
+    // Handled here:
+    // HT_CACHE_READ, HT_CACHE_WRITE, HT_TRANSFORM,
+    // HT_STATIC
+    break;
+  }
+
+  return 0;
+}
+
+int
+L4rSM::tunnel_handler(int event, void *data)
+{
+  STATE_ENTER(&L4rSM::tunnel_handler, event);
+
+  ink_assert(event == HTTP_TUNNEL_EVENT_DONE);
+  // The tunnel calls this when it is done
+  terminate_sm = true;
+
+  return 0;
 }
 

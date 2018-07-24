@@ -74,6 +74,8 @@ libhttp_a_SOURCES = \
 	HttpTunnel.h \
 	HttpUpdateSM.cc \
 	HttpUpdateSM.h \
+	L4rTunnel.cc \
+	L4rTunnel.h \
 	ForwardedConfig.cc
 
 if BUILD_TESTS
