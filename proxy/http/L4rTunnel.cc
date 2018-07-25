@@ -33,7 +33,7 @@
 #include "ts/ink_config.h"
 #include "HttpConfig.h"
 #include "L4rTunnel.h"
-#include "HttpSM.h"
+#include "L4rSM.h"
 #include "HttpDebugNames.h"
 #include "ts/ParseRules.h"
 

@@ -22,6 +22,7 @@
  */
 
 #include "http/HttpSM.h"
+#include "http/L4rSM.h"
 #include "http/HttpServerSession.h"
 #include "Plugin.h"
 

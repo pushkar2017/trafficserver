@@ -28,6 +28,7 @@
 
 class BaseSM;
 class HttpSM;
+class L4rSM;
 class HttpServerSession;
 class ProxyClientTransaction : public VConnection
 {

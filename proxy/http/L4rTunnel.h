@@ -34,6 +34,7 @@
 
 #include "ts/ink_platform.h"
 #include "P_EventSystem.h"
+#include "HttpSM.h"
 
 // Get rid of any previous definition first... /leif
 #ifdef MAX_PRODUCERS
