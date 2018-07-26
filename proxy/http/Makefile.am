@@ -58,8 +58,11 @@ libhttp_a_SOURCES = \
 	HttpPages.h \
 	HttpProxyServerMain.cc \
 	HttpProxyServerMain.h \
+	BaseSM.h \
 	HttpSM.cc \
 	HttpSM.h \
+	L4rSM.cc \
+	L4rSM.h \
 	HttpServerSession.cc \
 	HttpServerSession.h \
 	HttpSessionManager.cc \
@@ -76,9 +79,6 @@ libhttp_a_SOURCES = \
 	HttpUpdateSM.h \
 	L4rTunnel.cc \
 	L4rTunnel.h \
-	L4rSM.cc \
-	L4rSM.h \
-	BaseSM.h \
 	ForwardedConfig.cc
 
 if BUILD_TESTS

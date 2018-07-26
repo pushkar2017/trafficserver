@@ -24,9 +24,6 @@
 
 #include "../ProxyClientTransaction.h"
 #include "L4rSM.h"
-// TODO: Remove later once we abstract out the common enums etc. into a
-// common file
-#include "HttpSM.h"
 #include "HttpTransactHeaders.h"
 #include "ProxyConfig.h"
 #include "HttpServerSession.h"
@@ -301,7 +298,7 @@ L4rSM::init()
 
 #ifdef USE_L4R_DEBUG_LISTS
   ink_mutex_acquire(&l4rdebug_sm_list_mutex);
-  debug_sm_list.push(this);
+  l4rdebug_sm_list.push(this);
   ink_mutex_release(&l4rdebug_sm_list_mutex);
 #endif
 }
@@ -3076,9 +3073,9 @@ L4rSM::kill_this()
 #endif
 
 #ifdef USE_HTTP_DEBUG_LISTS
-    ink_mutex_acquire(&debug_sm_list_mutex);
-    debug_sm_list.remove(this);
-    ink_mutex_release(&debug_sm_list_mutex);
+    ink_mutex_acquire(&l4rdebug_sm_list_mutex);
+    l4rdebug_sm_list.remove(this);
+    ink_mutex_release(&l4rdebug_sm_list_mutex);
 #endif
 
     SMDebug("http", "[%" PRId64 "] deallocating sm", sm_id);
@@ -3788,5 +3785,12 @@ L4rSM::tunnel_handler(int event, void *data)
   terminate_sm = true;
 
   return 0;
+}
+
+/*inline*/ L4rSM *
+L4rSM::allocate()
+{
+  extern ClassAllocator<L4rSM> l4rSMAllocator;
+  return l4rSMAllocator.alloc();
 }
 
