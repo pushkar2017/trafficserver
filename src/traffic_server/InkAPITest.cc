@@ -8687,6 +8687,7 @@ std::array<std::string_view, TS_CONFIG_LAST_ENTRY> SDK_Overridable_Configs = {
    "proxy.config.http.allow_multi_range",
    "proxy.config.http.request_buffer_enabled",
    "proxy.config.http.allow_half_open",
+   "proxy.config.http2.no_activity_timeout_in",
    OutboundConnTrack::CONFIG_VAR_MAX,
    OutboundConnTrack::CONFIG_VAR_MATCH}};
 

@@ -8196,6 +8196,9 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
   case TS_CONFIG_HTTP_ALLOW_HALF_OPEN:
     ret = _memberp_to_generic(&overridableHttpConfig->allow_half_open, conv);
     break;
+  case TS_CONFIG_HTTP2_NO_ACTIVITY_TIMEOUT_IN:
+    ret = _memberp_to_generic(&overridableHttpConfig->no_activity_timeout_in, conv);
+    break;
   case TS_CONFIG_HTTP_PER_SERVER_CONNECTION_MAX:
     ret  = &overridableHttpConfig->outbound_conntrack.max;
     conv = &OutboundConnTrack::MAX_CONV;
@@ -8640,6 +8643,11 @@ TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, 
         cnf = TS_CONFIG_HTTP_REQUEST_HEADER_MAX_SIZE;
       } else if (!strncmp(name, "proxy.config.http.parent_proxy.retry_time", length)) {
         cnf = TS_CONFIG_HTTP_PARENT_PROXY_RETRY_TIME;
+      }
+      break;
+    case 'n':
+      if (!strncmp(name, "proxy.config.http2.no_activity_timeout_in", length)) {
+        cnf = TS_CONFIG_HTTP2_NO_ACTIVITY_TIMEOUT_IN;
       }
       break;
     case 'r':

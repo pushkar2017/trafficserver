@@ -482,6 +482,7 @@ struct OverridableHttpConfigParams {
       transaction_active_timeout_in(900),
       websocket_active_timeout(3600),
       websocket_inactive_timeout(600),
+      no_activity_timeout_in(120),
       connect_attempts_max_retries(0),
       connect_attempts_max_retries_dead_server(3),
       connect_attempts_rr_retries(3),
@@ -696,6 +697,7 @@ struct OverridableHttpConfigParams {
   MgmtInt transaction_active_timeout_in;
   MgmtInt websocket_active_timeout;
   MgmtInt websocket_inactive_timeout;
+  MgmtInt no_activity_timeout_in;
 
   ////////////////////////////////////
   // origin server connect attempts //
