@@ -909,11 +909,9 @@ DNSHandler::recv_dns(int /* event ATS_UNUSED */, Event * /* e ATS_UNUSED */)
   }
 }
 
-/** Main event for the DNSHandler. Attempt to read from and write to named. */
-int
-DNSHandler::mainEvent(int event, Event *e)
+void
+DNSHandler::failover_check()
 {
-  recv_dns(event, e);
   if (dns_ns_rr) {
     ink_hrtime t = Thread::get_hrtime();
     if (t - last_primary_retry > DNS_PRIMARY_RETRY_PERIOD) {
@@ -951,6 +949,13 @@ DNSHandler::mainEvent(int event, Event *e)
       try_primary_named(true);
     }
   }
+}
+
+/** Main event for the DNSHandler. Attempt to read from and write to named. */
+int
+DNSHandler::mainEvent(int event, Event *e)
+{
+  recv_dns(event, e);
 
   if (entries.head) {
     write_dns(this);

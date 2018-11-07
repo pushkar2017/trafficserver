@@ -278,6 +278,10 @@ struct DNSHandler : public Continuation {
     return (qid_in_flight[(uint16_t)(qid) >> 6] & (uint64_t)(0x1ULL << ((uint16_t)(qid)&0x3F))) != 0;
   };
 
+  // Check if we need to failover any resolvers
+  void
+  failover_check();
+
   DNSHandler();
 
 private:
